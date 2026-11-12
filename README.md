@@ -3,7 +3,7 @@
 PowerShell 5.1, scoop, yt-dlp und FFmpeg. Keine weiteren Abhängigkeiten.
 
 ## Einrichtung
-1. `config.example.json` nach `config.json` kopieren (`config.json` ist im Repo absichtlich nicht enthalten).
+1. `config.example.json` nach `config.json` kopieren (die Datei ist absichtlich nicht im Repo).
 2. **Twitch-API-Zugang** (kostenlos): auf https://dev.twitch.tv/console eine Anwendung registrieren
    (OAuth Redirect URL: `http://localhost`, Kategorie z. B. "Application Integration") und
    `twitchClientId` / `twitchClientSecret` in `config.json` eintragen.
@@ -39,3 +39,4 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\twitch_monitor.ps1 -Re
   Das Monitor-Skript remuxt sie danach per `ffmpeg -c copy` zu `.mp4` (optional `ffmpegPath` in `config.json`).
   Eingebettete Metadaten/Thumbnail fehlen bei solchen Dateien; endet der Stream normal, erledigt yt-dlp alles selbst.
 - `--cookies-from-browser firefox` (twitch.conf) kann scheitern, während Firefox läuft oder das Profil gesperrt ist.
+  In dem Fall yt-dlp-Fehlermeldung in `<kanal>.ytdlp.err.log` prüfen.

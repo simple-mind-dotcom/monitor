@@ -1,18 +1,10 @@
-# lokale Konfiguration (enthält Twitch-Zugangsdaten)
+# Lokale Konfiguration & Secrets
 configs/config.json
 
 # Laufzeitzustand
 configs/state.json
-
-# Logs
 logs/
-*.log
-*.prev.log
 
 # Windows-Artefakte
 desktop.ini
 Thumbs.db
-
-# yt-dlp-Rückstände
-*.part
-*.ytdlp.temp.mp4
