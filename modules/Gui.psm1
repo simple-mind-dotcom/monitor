@@ -95,8 +95,9 @@ function Set-GuiProp {
 }
 
 function Read-GuiRawConfig {
+    # Gleiche Datei wie das Hauptskript: configs\config.json (nicht der Projektordner).
     param([Parameter(Mandatory)][hashtable]$State)
-    $path = Join-Path $State.ProjectRoot 'config.json'
+    $path = Join-Path $State.ProjectRoot 'configs\config.json'
     if (Test-Path -LiteralPath $path) {
         return (Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json)
     }
@@ -374,6 +375,7 @@ function Update-RuntimeConfig {
     param([Parameter(Mandatory)][hashtable]$State, [Parameter(Mandatory)][hashtable]$NewConfig)
 
     $State.Config = $NewConfig
+    Set-LogLevel -Level $NewConfig.LogLevel
     $State.TwitchAccessToken = $null     # neue Zugangsdaten -> Token neu holen
     $State.TokenExpiresAt = $null
 
@@ -433,7 +435,7 @@ function Save-GuiSettings {
     if ([string]::IsNullOrWhiteSpace($f.outputDirectory.Text)) { throw 'Der Aufnahme-Ordner darf nicht leer sein.' }
     if ([string]::IsNullOrWhiteSpace($f.ytDlpPath.Text)) { throw 'Der Pfad zu yt-dlp darf nicht leer sein.' }
 
-    $path = Join-Path $State.ProjectRoot 'config.json'
+    $path = Join-Path $State.ProjectRoot 'configs\config.json'
     $raw = Read-GuiRawConfig -State $State
 
     Set-GuiProp $raw 'channels' @($channels)

@@ -20,7 +20,7 @@ try { [System.Windows.Forms.Application]::SetUnhandledExceptionMode([System.Wind
 
 # -Global: Module rufen sich gegenseitig auf (z. B. Monitor -> Recorder), das braucht globale Sichtbarkeit.
 # Gui ist optional: fehlt modules\Gui.psm1, läuft alles wie vorher (ohne Fenster).
-$moduleNames = @('Logging', 'Config', 'Twitch', 'Recorder', 'Downloader', 'Monitor', 'Tray', 'Startup')
+$moduleNames = @('Logging', 'Config', 'Recorder', 'Downloader', 'Monitor', 'Tray', 'Startup')
 if (Test-Path -LiteralPath (Join-Path $script:ProjectRoot 'modules\Gui.psm1')) { $moduleNames += 'Gui' }
 foreach ($name in $moduleNames) {
     Import-Module (Join-Path $script:ProjectRoot "modules\$name.psm1") -Force -Global -DisableNameChecking -ErrorAction Stop
@@ -72,6 +72,10 @@ $script:AppState = @{
     RemuxJobs       = New-Object System.Collections.ArrayList
     DownloadJobs    = New-Object System.Collections.ArrayList
     DownloadHistory = New-Object System.Collections.ArrayList
+    StoppingPollJobs = New-Object System.Collections.ArrayList
+    ApiBackoffUntil = $null
+    ApiBackoffFails = 0
+    YtDlpVersionChecked = $false
     Tray            = @{ NotifyIcon = $null; ContextMenu = $null }
     LogPath         = Join-Path $script:ProjectRoot 'logs'
     StatePath       = Join-Path $script:ProjectRoot 'configs/state.json'
@@ -81,12 +85,13 @@ try {
     Initialize-Logging -LogDirectory $script:AppState.LogPath
     Write-Log -Level INFO -Message 'Twitch Monitor wird gestartet.'
     $script:GuiAvailable = [bool](Get-Command Show-MainWindow -ErrorAction SilentlyContinue)
-    Write-Log -Level INFO -Message ("GUI-Modul: " + $(if ($script:GuiAvailable) { 'geladen (Fenster: Tray-Doppelklick oder Start mit -ShowWindow)' } else { 'nicht vorhanden' }))
+    Write-Log -Level DEBUG -Message ("GUI-Modul: " + $(if ($script:GuiAvailable) { 'geladen (Fenster: Tray-Doppelklick oder Start mit -ShowWindow)' } else { 'nicht vorhanden' }))
     $script:AppState.Config = Initialize-Config -Path (Join-Path $script:ProjectRoot 'configs/config.json')
+    Set-LogLevel -Level $script:AppState.Config.LogLevel
     foreach ($channel in $script:AppState.Config.Channels) {
         $script:AppState.Channels[$channel] = New-ChannelState -Name $channel
     }
-    Write-Log -Level INFO -Message ("Überwachte Kanäle: " + ($script:AppState.Config.Channels -join ', '))
+    Write-Log -Level DEBUG -Message ("Überwachte Kanäle: " + ($script:AppState.Config.Channels -join ', '))
 
     # Per Tray-Menü deaktivierte Kanäle (state.json) wiederherstellen.
     $disabledChannels = @(Get-DisabledChannels -Path $script:AppState.StatePath)
@@ -94,7 +99,7 @@ try {
         if ($script:AppState.Channels.ContainsKey($disabledName)) { $script:AppState.Channels[$disabledName].Enabled = $false }
     }
     if ($disabledChannels.Count -gt 0) {
-        Write-Log -Level INFO -Message ("Inaktive Kanäle: " + ($disabledChannels -join ', '))
+        Write-Log -Level DEBUG -Message ("Inaktive Kanäle: " + ($disabledChannels -join ', '))
     }
 
     if (-not $NoTray) {

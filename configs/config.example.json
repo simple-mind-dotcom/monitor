@@ -9,6 +9,8 @@
   "twitchClientId": "",
   "twitchClientSecret": "",
   "pollInterval": 30,
+  "minFreeDiskSpaceGB": 5,
+  "logLevel": "INFO",
   "downloads": {
     "videoConfigPath": "configs\\download_video.conf",
     "musicConfigPath": "configs\\download_music.conf",

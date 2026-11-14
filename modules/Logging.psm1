@@ -1,4 +1,5 @@
 ﻿$script:LogDirectory = $null
+$script:LogLevel = 'INFO'
 $script:LogMaxBytes = 5MB    # ab dieser Größe wird rotiert
 $script:LogKeep = 3          # wie viele alte Stände (.1 bis .3) behalten werden
 
@@ -10,6 +11,13 @@ function Initialize-Logging {
     if (-not (Test-Path -LiteralPath $LogDirectory)) {
         New-Item -ItemType Directory -Path $LogDirectory -Force | Out-Null
     }
+}
+
+function Set-LogLevel {
+    # DEBUG-Meldungen (Routine/Details) werden nur geschrieben, wenn logLevel in config.json auf 'DEBUG' steht.
+    [CmdletBinding()]
+    param([ValidateSet('DEBUG','INFO')][string]$Level = 'INFO')
+    $script:LogLevel = $Level
 }
 
 function Invoke-LogRotation {
@@ -34,12 +42,13 @@ function Write-Log {
     [CmdletBinding()]
     param(
         [string]$Channel,
-        [ValidateSet('INFO','WARN','ERROR')][string]$Level = 'INFO',
+        [ValidateSet('DEBUG','INFO','WARN','ERROR')][string]$Level = 'INFO',
         [Parameter(Mandatory)][string]$Message
     )
 
     try {
         if (-not $script:LogDirectory) { return }
+        if ($Level -eq 'DEBUG' -and $script:LogLevel -ne 'DEBUG') { return }
         $line = '{0} [{1}] {2}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Level, $Message
         $monitorLog = Join-Path $script:LogDirectory 'monitor.log'
         Invoke-LogRotation -Path $monitorLog
@@ -56,4 +65,4 @@ function Write-Log {
     }
 }
 
-Export-ModuleMember -Function Initialize-Logging, Write-Log
+Export-ModuleMember -Function Initialize-Logging, Set-LogLevel, Write-Log

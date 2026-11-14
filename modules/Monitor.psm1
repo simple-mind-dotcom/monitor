@@ -19,9 +19,9 @@ function Set-ApiErrorAll {
 # ALLE Kanäle in einer einzigen Anfrage ab (die Twitch-API erlaubt bis zu 100 user_login pro Aufruf).
 # Dadurch blockiert die Abfrage weder das Tray noch das Hauptfenster. Ergebnis: Hashtable.
 $script:PollScript = @'
-param($ClientId, $ClientSecret, $Token, $Channels)
+param($ClientId, $ClientSecret, $Token, $Channels, $YtDlpPath, $CheckVersion)
 $ErrorActionPreference = 'Stop'
-$result = @{ Token = $null; ExpiresIn = 0; Streams = @{}; Error = $null; Code = -1 }
+$result = @{ Token = $null; ExpiresIn = 0; Streams = @{}; Error = $null; Code = -1; RetryAfter = 0; YtDlpVersion = $null }
 try {
     if (-not $Token) {
         $body = @{ client_id = $ClientId; client_secret = $ClientSecret; grant_type = 'client_credentials' }
@@ -50,20 +50,47 @@ catch {
     try {
         $resp = $_.Exception.Response
         if ($resp -and $resp.StatusCode) { $result.Code = [int]$resp.StatusCode }
+        if ($resp) {
+            try { $result.RetryAfter = [int]$resp.Headers['Retry-After'] } catch { }
+        }
     }
     catch { }
     if ($result.Code -lt 0 -and $_.Exception -is [System.Net.WebException]) { $result.Code = 0 }   # Netzwerkfehler/Timeout
+}
+if ($CheckVersion) {
+    try {
+        $v = @(& $YtDlpPath --version 2>$null)
+        if ($v.Count -gt 0) { $result.YtDlpVersion = ([string]$v[0]).Trim() }
+    }
+    catch { }
 }
 $result
 '@
 
 function Stop-PollJob {
-    # Bricht eine laufende Abfrage ab, ohne zu blockieren (BeginStop; der Runspace wird nicht synchron entsorgt).
+    # Bricht eine laufende Abfrage ab, ohne zu blockieren (BeginStop). Der Runspace wird nicht synchron
+    # entsorgt, sondern in StoppingPollJobs gemerkt und vom Poll-Timer später freigegeben (kein Leak).
     param([Parameter(Mandatory)][hashtable]$State)
     $job = $State.PollJob
     $State.PollJob = $null
     if (-not $job) { return }
+    $job.StoppedAt = Get-Date
+    if ($null -eq $State.StoppingPollJobs) { $State.StoppingPollJobs = New-Object System.Collections.ArrayList }
+    [void]$State.StoppingPollJobs.Add($job)
     try { [void]$job.PS.BeginStop($null, $null) } catch { }
+}
+
+function Update-StoppingPollJobs {
+    # Gibt abgebrochene Abfrage-Runspaces frei, sobald BeginStop abgeschlossen ist (billig, ohne Blockieren).
+    param([Parameter(Mandatory)][hashtable]$State)
+    if ($null -eq $State.StoppingPollJobs -or $State.StoppingPollJobs.Count -eq 0) { return }
+    foreach ($job in @($State.StoppingPollJobs)) {
+        $elapsed = ((Get-Date) - $job.StoppedAt).TotalSeconds
+        if ($elapsed -lt 2) { continue }
+        $disposed = $false
+        try { $job.PS.Dispose(); $disposed = $true } catch { }
+        if ($disposed -or $elapsed -gt 30) { [void]$State.StoppingPollJobs.Remove($job) }
+    }
 }
 
 function Invoke-MonitorCycle {
@@ -83,6 +110,9 @@ function Invoke-MonitorCycle {
         catch { Write-Log -Channel $channel -Level ERROR -Message "Aufräumen (inaktiv): $($_.Exception.Message)" }
     }
 
+    # Backoff nach Rate-Limit/Serverfehlern: die API nicht weiter belästigen.
+    if ($State.ApiBackoffUntil -and (Get-Date) -lt $State.ApiBackoffUntil) { return }
+
     if ($State.PollJob) { return }   # vorige Abfrage läuft noch
     $active = @($State.Channels.Keys | Where-Object { $State.Channels[$_].Enabled } | Sort-Object)
     if ($active.Count -eq 0) { return }
@@ -93,8 +123,9 @@ function Invoke-MonitorCycle {
 
     try {
         $cfg = $State.Config
+        $checkVersion = (-not $State.YtDlpVersionChecked)
         $ps = [powershell]::Create()
-        [void]$ps.AddScript($script:PollScript).AddArgument($cfg.TwitchClientId).AddArgument($cfg.TwitchClientSecret).AddArgument($token).AddArgument($active)
+        [void]$ps.AddScript($script:PollScript).AddArgument($cfg.TwitchClientId).AddArgument($cfg.TwitchClientSecret).AddArgument($token).AddArgument($active).AddArgument($cfg.YtDlpPath).AddArgument($checkVersion)
         $handle = $ps.BeginInvoke()
         $State.PollJob = @{ PS = $ps; Handle = $handle; StartedAt = Get-Date; Channels = $active }
     }
@@ -104,11 +135,29 @@ function Invoke-MonitorCycle {
     }
 }
 
+function Test-YtDlpAge {
+    # yt-dlp bricht bei Twitch-Änderungen regelmäßig - deshalb einmal pro Start das Alter der Version prüfen.
+    param([Parameter(Mandatory)][hashtable]$State, [Parameter(Mandatory)][hashtable]$Result)
+    if ($State.YtDlpVersionChecked) { return }
+    $State.YtDlpVersionChecked = $true
+    $version = [string]$Result.YtDlpVersion
+    if (-not $version) { return }
+    $parsed = [datetime]::MinValue
+    $ok = [datetime]::TryParseExact($version, 'yyyy.MM.dd', [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::None, [ref]$parsed)
+    if (-not $ok) { return }
+    $age = [int](((Get-Date) - $parsed).TotalDays)
+    if ($age -le 30) { return }
+    Write-Log -Level WARN -Message "yt-dlp $version ist $age Tage alt - bei Twitch-Problemen bitte aktualisieren (scoop update yt-dlp)."
+    Show-TrayBalloon -State $State -Title 'yt-dlp veraltet' -Text "yt-dlp ist $age Tage alt. Bei Twitch-Problemen: scoop update yt-dlp" -IsError $true
+}
+
 function Update-MonitorPoll {
     # Wird vom Poll-Timer gerufen (billig: prüft nur, ob die Hintergrundabfrage fertig ist) und wertet
     # das Ergebnis aus: Live-Status setzen, Aufnahmen starten/stoppen.
     [CmdletBinding()]
     param([Parameter(Mandatory)][hashtable]$State)
+
+    Update-StoppingPollJobs -State $State
 
     $job = $State.PollJob
     if (-not $job) { return }
@@ -143,6 +192,16 @@ function Update-MonitorPoll {
             $State.TwitchAccessToken = $null   # Token ungültig -> im nächsten Zyklus neu holen
             $State.TokenExpiresAt = $null
         }
+        # Rate-Limit/Serverfehler: mit exponentiellem Backoff (max. 30 min) das nächste Abfragen verzögern.
+        $code = [int]$result.Code
+        if ($code -eq 429 -or $code -ge 500) {
+            $State.ApiBackoffFails = [int]$State.ApiBackoffFails + 1
+            $delay = [Math]::Min(1800, 60 * [Math]::Pow(2, [Math]::Min([int]$State.ApiBackoffFails, 5) - 1))
+            $retryAfter = [int]$result.RetryAfter
+            if ($retryAfter -gt $delay) { $delay = [Math]::Min(1800, $retryAfter) }
+            $State.ApiBackoffUntil = (Get-Date).AddSeconds($delay)
+            Write-Log -Level WARN -Message "Twitch-API (HTTP $code) - nächste Abfrage in $([int]$delay) s."
+        }
         foreach ($channel in $job.Channels) {
             $cs = $State.Channels[$channel]
             if ($cs) { $cs.LastError = $msg }
@@ -155,6 +214,9 @@ function Update-MonitorPoll {
         $State.TwitchAccessToken = [string]$result.Token
         $State.TokenExpiresAt = (Get-Date).AddSeconds([Math]::Max(60, [int]$result.ExpiresIn - 300))
     }
+    $State.ApiBackoffFails = 0
+    $State.ApiBackoffUntil = $null
+    Test-YtDlpAge -State $State -Result $result
     $streams = $result.Streams
     if ($null -eq $streams) { $streams = @{} }
 
@@ -362,4 +424,4 @@ function Stop-Monitor {
     [System.Windows.Forms.Application]::Exit()
 }
 
-Export-ModuleMember -Function New-ChannelState, Set-ChannelEnabled, Start-Monitor, Stop-Monitor, Pause-Monitor, Resume-Monitor, Invoke-MonitorCycle, Update-MonitorPoll
+Export-ModuleMember -Function New-ChannelState, Set-ChannelEnabled, Start-Monitor, Stop-Monitor, Pause-Monitor, Resume-Monitor, Invoke-MonitorCycle, Update-MonitorPoll, Test-YtDlpAge
