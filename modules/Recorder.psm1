@@ -25,7 +25,7 @@ catch { exit 3 }
 function ConvertTo-ArgumentString {
     # Start-Process -ArgumentList quotet Array-Elemente nicht. Pfade/Titel mit Leerzeichen
     # würden sonst in mehrere Argumente zerfallen.
-    param([Parameter(Mandatory)][string[]]$Items)
+    param([Parameter(Mandatory)][AllowEmptyString()][string[]]$Items)
     $quoted = foreach ($item in $Items) {
         if ($item -match '[\s"]' -or $item -eq '') {
             $escaped = $item -replace '(\\*)"', '$1$1\"'
