@@ -101,6 +101,29 @@ function Get-OrphanRecorder {
     }
 }
 
+function Test-FreeDiskSpace {
+    # Verhindert Aufnahmen, wenn der Datenträger voll läuft (yt-dlp würde sonst mittendrin abbrechen).
+    # UNC-Pfade machen DriveInfo mit: der Check wird dann einfach übersprungen.
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][hashtable]$State, [Parameter(Mandatory)][string]$Channel, [Parameter(Mandatory)][string]$Folder)
+
+    $minGB = 5.0
+    if ($State.Config.MinFreeDiskSpaceGB) { $minGB = [double]$State.Config.MinFreeDiskSpaceGB }
+    if ($minGB -le 0) { return $true }
+    try {
+        $drive = New-Object IO.DriveInfo($Folder)
+        $freeGB = $drive.AvailableFreeSpace / 1GB
+        if ($freeGB -ge $minGB) { return $true }
+        $cs = $State.Channels[$Channel]
+        $cs.LastError = "Zu wenig Speicherplatz auf $($drive.Name): $([Math]::Round($freeGB, 1)) GB frei (Minimum $minGB GB)."
+        $cs.FailCount = [int]$cs.FailCount + 1
+        $cs.NextStartAt = (Get-Date).AddSeconds(300)
+        Write-Log -Channel $Channel -Level ERROR -Message "Keine Aufnahme gestartet: $($cs.LastError) (nächster Versuch in 300 s)"
+        Show-TrayBalloon -State $State -Title 'Speicherplatz niedrig' -Text "$($Channel): nur noch $([Math]::Round($freeGB, 1)) GB frei - Aufnahme verzögert." -IsError $true
+    }
+    catch { return $true }
+}
+
 function Start-ChannelRecording {
     [CmdletBinding()]
     param(
@@ -115,6 +138,8 @@ function Start-ChannelRecording {
     $ytDlp = $State.Config.YtDlpPath
     $configPath = $State.Config.TwitchConfigPath
     $folder = Join-Path $State.Config.OutputDirectory $Channel
+
+    if (-not (Test-FreeDiskSpace -State $State -Channel $Channel -Folder $folder)) { return $false }
 
     try {
         New-Item -ItemType Directory -Path $folder -Force -ErrorAction Stop | Out-Null
@@ -268,7 +293,7 @@ function Update-RemuxJobs {
 function Wait-RemuxJobs {
     # Nur beim Beenden: wartet, bis alle laufenden Remux-Jobs fertig sind (parallel laufend, daher meist kurz).
     [CmdletBinding()]
-    param([Parameter(Mandatory)][hashtable]$State, [int]$TimeoutSeconds = 900)
+    param([Parameter(Mandatory)][hashtable]$State, [int]$TimeoutSeconds = 120)
 
     if ($null -eq $State.RemuxJobs) { return }
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
@@ -278,7 +303,7 @@ function Wait-RemuxJobs {
         Update-RemuxJobs -State $State
     }
     if ($State.RemuxJobs.Count -gt 0) {
-        Write-Log -Level WARN -Message "$($State.RemuxJobs.Count) Remux-Job(s) laufen beim Beenden noch; die .part-Dateien bleiben erhalten."
+        Write-Log -Level WARN -Message "$($State.RemuxJobs.Count) Remux-Job(s) laufen beim Beenden noch (Wartezeit $TimeoutSeconds s überschritten); die .remux.mp4-Dateien werden fertig geschrieben, bleiben aber als solche liegen."
     }
 }
 
@@ -309,7 +334,7 @@ function Stop-ChannelRecording {
                 }
             }
         }
-        Write-Log -Channel $Channel -Level INFO -Message 'Aufnahmeprozess beendet.'
+        Write-Log -Channel $Channel -Level DEBUG -Message 'Aufnahmeprozess beendet.'
         Clear-RecordingState -ChannelState $cs
         Complete-PartialRecording -Channel $Channel -State $State
         return $true
@@ -346,7 +371,7 @@ function Get-RecordingStatus {
     $failed = ($code -ne 0) -or $isShort
 
     if ($code -eq 0) {
-        Write-Log -Channel $Channel -Level INFO -Message "yt-dlp hat sich beendet (Exit-Code 0, Laufzeit $([int]$runtime.TotalSeconds) s)."
+        Write-Log -Channel $Channel -Level DEBUG -Message "yt-dlp hat sich beendet (Exit-Code 0, Laufzeit $([int]$runtime.TotalSeconds) s)."
     }
     else {
         Write-Log -Channel $Channel -Level WARN -Message "yt-dlp hat sich beendet (Exit-Code $code, Laufzeit $([int]$runtime.TotalSeconds) s). Details: logs\$Channel.ytdlp.err.log (voriger Lauf: .prev.log)"
@@ -366,24 +391,45 @@ function Get-RecordingStatus {
     }
 
     Clear-RecordingState -ChannelState $cs
+    # Sauber beendete Läufe erzeugen keine Fehler; leere Logdateien werden dann gleich mit entfernt.
+    if (-not $failed) { Remove-EmptyYtdlpLogs -State $State -Channel $Channel }
     # Von selbst beendetes yt-dlp (Absturz, Netzwerkabbruch) hinterlässt evtl. eine unfertige .part-Datei.
     try { Complete-PartialRecording -Channel $Channel -State $State }
     catch { Write-Log -Channel $Channel -Level ERROR -Message "Nachbearbeitung fehlgeschlagen: $($_.Exception.Message)" }
     return $false
 }
 
+function Remove-EmptyYtdlpLogs {
+    # Nur bei Fehlern soll etwas im Log-Ordner liegen: Leere yt-dlp-Logs eines sauberen Laufs entfernen.
+    param([Parameter(Mandatory)][hashtable]$State, [Parameter(Mandatory)][string]$Channel)
+    $errLog = Join-Path $State.LogPath "$Channel.ytdlp.err.log"
+    try {
+        if ((Test-Path -LiteralPath $errLog) -and (Get-Item -LiteralPath $errLog).Length -gt 0) { return }
+        foreach ($suffix in 'out', 'err') {
+            $logFile = Join-Path $State.LogPath "$Channel.ytdlp.$suffix.log"
+            if ((Test-Path -LiteralPath $logFile) -and (Get-Item -LiteralPath $logFile).Length -eq 0) {
+                Remove-Item -LiteralPath $logFile -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
+    catch { }
+}
+
 function Get-RecordingSize {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$Channel, [Parameter(Mandatory)][hashtable]$State)
     # Nur Dateien der aktuellen Aufnahme (inkl. .part/.ytdl/Teilformate) zählen, nicht den ganzen Künstlerordner.
+    # Ergebnis 5 s cachen: das Tray fragt jede Sekunde ab, ein Verzeichnis-Scan pro Tick ist unnötig.
     $cs = $State.Channels[$Channel]
     $folder = $cs.OutputFolder
     $prefix = $cs.OutputPrefix
     if (-not $folder -or -not $prefix -or -not (Test-Path -LiteralPath $folder)) { return [int64]0 }
+    if ($cs.SizeCache -and ((Get-Date) - $cs.SizeCache.At).TotalSeconds -lt 5) { return [int64]$cs.SizeCache.Value }
     $sum = [int64]0
     foreach ($f in @(Get-ChildItem -LiteralPath $folder -File -ErrorAction SilentlyContinue)) {
         if ($f.Name.StartsWith("$prefix.", [StringComparison]::OrdinalIgnoreCase)) { $sum += $f.Length }
     }
+    $cs.SizeCache = @{ Value = $sum; At = Get-Date }
     return $sum
 }
 

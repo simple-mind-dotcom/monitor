@@ -374,6 +374,7 @@ function Update-RuntimeConfig {
     param([Parameter(Mandatory)][hashtable]$State, [Parameter(Mandatory)][hashtable]$NewConfig)
 
     $State.Config = $NewConfig
+    Set-LogLevel -Level $NewConfig.LogLevel
     $State.TwitchAccessToken = $null     # neue Zugangsdaten -> Token neu holen
     $State.TokenExpiresAt = $null
 

@@ -22,3 +22,18 @@ jobs:
             Write-Error "$($errors.Count) PSScriptAnalyzer-Fehler gefunden"
             exit 1
           }
+
+  pester:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Pester tests
+        shell: pwsh
+        run: |
+          Install-Module Pester -Force -Scope CurrentUser
+          $config = New-PesterConfiguration
+          $config.Run.Path = './tests'
+          $config.Run.Exit = $true
+          $config.Output.Verbosity = 'Detailed'
+          Invoke-Pester -Configuration $config

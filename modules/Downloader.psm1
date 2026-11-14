@@ -151,13 +151,7 @@ function Request-SingleDownload {
 
 function Show-DownloadBalloon {
     param([Parameter(Mandatory)][hashtable]$State, [string]$Title, [string]$Text, [bool]$IsError = $false)
-    try {
-        $n = $State.Tray.NotifyIcon
-        if (-not $n) { return }
-        $icon = if ($IsError) { [System.Windows.Forms.ToolTipIcon]::Error } else { [System.Windows.Forms.ToolTipIcon]::Info }
-        $n.ShowBalloonTip(6000, $Title, $Text, $icon)
-    }
-    catch { }
+    Show-TrayBalloon -State $State -Title $Title -Text $Text -IsError $IsError
 }
 
 function Start-SingleDownload {

@@ -256,6 +256,19 @@ function Set-TrayStatus {
     if ($State.Tray.NotifyIcon) { $State.Tray.NotifyIcon.Text = $Status.Substring(0, [Math]::Min(63, $Status.Length)) }
 }
 
+function Show-TrayBalloon {
+    # Zentrale Balloon-Meldungen (Aufnahme, Download, Warnungen). Ohne Tray-Icon (NoTray) ein No-Op.
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][hashtable]$State, [Parameter(Mandatory)][string]$Title, [string]$Text = '', [bool]$IsError = $false)
+    try {
+        $n = $State.Tray.NotifyIcon
+        if (-not $n) { return }
+        $icon = if ($IsError) { [System.Windows.Forms.ToolTipIcon]::Error } else { [System.Windows.Forms.ToolTipIcon]::Info }
+        $n.ShowBalloonTip(6000, $Title, $Text, $icon)
+    }
+    catch { }
+}
+
 function Dispose-Tray {
     param([Parameter(Mandatory)][hashtable]$State)
     if ($State.Timers.Tray) { $State.Timers.Tray.Stop(); $State.Timers.Tray.Dispose(); $State.Timers.Tray = $null }
@@ -263,4 +276,4 @@ function Dispose-Tray {
     if ($State.Tray.ContextMenu) { $State.Tray.ContextMenu.Dispose(); $State.Tray.ContextMenu = $null }
 }
 
-Export-ModuleMember -Function Initialize-Tray, Update-Tray, Set-TrayStatus, Dispose-Tray
+Export-ModuleMember -Function Initialize-Tray, Update-Tray, Set-TrayStatus, Dispose-Tray, Show-TrayBalloon
