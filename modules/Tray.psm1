@@ -132,7 +132,17 @@ function Update-Tray {
                 $item.Enabled = $false
             }
 
-            foreach ($channel in @($State.Channels.Keys | Sort-Object)) {
+            # Live/Aufnahme zuerst, dann Status unbekannt, offline, inaktiv - innerhalb der Gruppen alphabetisch.
+            # Inaktive Kanäle werden mit abgefragt und zeigen ihren Live-Status ebenfalls an.
+            $sorted = @($State.Channels.Keys | ForEach-Object {
+                $c = $State.Channels[$_]
+                $p = 2
+                if ($c.IsLive -or (Test-ChannelRecording -Channel $_ -State $State)) { $p = 0 }
+                elseif (-not $c.Enabled) { $p = 3 }
+                elseif (Test-ChannelStatusUnknown -State $State -ChannelState $c) { $p = 1 }
+                [pscustomobject]@{ Priority = $p; Name = [string]$_ }
+            } | Sort-Object Priority, Name | ForEach-Object { $_.Name })
+            foreach ($channel in $sorted) {
                 $cs = $State.Channels[$channel]
                 $unknown = Test-ChannelStatusUnknown -State $State -ChannelState $cs
                 $suffix = if ($unknown) { " ($($script:Sym.Warn) Status unbekannt)" } else { '' }
@@ -149,6 +159,19 @@ function Update-Tray {
                         $size = Format-Size -Bytes (Get-RecordingSize -Channel $channel -State $State)
                         $detail = $menu.Items.Add("   $($script:Sym.Timer) $duration  $($script:Sym.Disk) $size")
                         $detail.Enabled = $false
+                    }
+                    elseif ($cs.IsLive) {
+                        $title = [string]$cs.Title
+                        if ($title.Length -gt 30) { $title = $title.Substring(0, 30) }
+                        $title = $title -replace '&', '&&'
+                        $label = if ($title) { "$($script:Sym.Live) $channel $($script:Sym.Dash) $title (inaktiv $($script:Sym.Dash) live)" }
+                        else { "$($script:Sym.Live) $channel (inaktiv $($script:Sym.Dash) live)" }
+                        $item = $menu.Items.Add($label)
+                        $item.Enabled = $false
+                    }
+                    elseif ($unknown) {
+                        $item = $menu.Items.Add("$($script:Sym.Warn) $channel (inaktiv - Status unbekannt)")
+                        $item.Enabled = $false
                     }
                     else {
                         $item = $menu.Items.Add("$($script:Sym.Pause) $channel (inaktiv)")
@@ -184,7 +207,9 @@ function Update-Tray {
             # Untermenü: einzelne Kanäle aktiv (Haken) oder inaktiv schalten.
             $sub = New-Object System.Windows.Forms.ToolStripMenuItem -ArgumentList 'Aktive Kanäle:'
             foreach ($channel in @($State.Channels.Keys | Sort-Object)) {
-                $entry = New-Object System.Windows.Forms.ToolStripMenuItem -ArgumentList ($channel -replace '&', '&&')
+                $label = $channel -replace '&', '&&'
+                if ($State.Channels[$channel].IsLive) { $label = "$label  $($script:Sym.Live)" }
+                $entry = New-Object System.Windows.Forms.ToolStripMenuItem -ArgumentList $label
                 $entry.Checked = [bool]$State.Channels[$channel].Enabled
                 # GetNewClosure: $channel und $State müssen im Handler pro Eintrag erhalten bleiben.
                 $entry.add_Click({
@@ -200,6 +225,18 @@ function Update-Tray {
         }
 
         [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
+
+        if (-not $State.ConfigError) {
+            $toggleText = if ($State.IsPaused) { "$($script:Sym.Play) Fortsetzen" } else { "$($script:Sym.Pause) Pausieren" }
+            $toggle = $menu.Items.Add($toggleText)
+            $toggle.add_Click({
+                try {
+                    if ($State.IsPaused) { Resume-Monitor -State $State } else { Pause-Monitor -State $State }
+                    Update-Tray -State $State
+                }
+                catch { Write-Log -Level ERROR -Message "Tray (Pause/Fortsetzen): $($_.Exception.Message)" }
+            }.GetNewClosure())
+        }
 
         $openFolder = $menu.Items.Add("$($script:Sym.Folder) Download-Ordner öffnen")
         $openFolder.add_Click({
@@ -221,18 +258,6 @@ function Update-Tray {
 			$dlInfo.Enabled = $false
 		}
         [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
-
-        if (-not $State.ConfigError) {
-            $toggleText = if ($State.IsPaused) { "$($script:Sym.Play) Fortsetzen" } else { "$($script:Sym.Pause) Pausieren" }
-            $toggle = $menu.Items.Add($toggleText)
-            $toggle.add_Click({
-                try {
-                    if ($State.IsPaused) { Resume-Monitor -State $State } else { Pause-Monitor -State $State }
-                    Update-Tray -State $State
-                }
-                catch { Write-Log -Level ERROR -Message "Tray (Pause/Fortsetzen): $($_.Exception.Message)" }
-            }.GetNewClosure())
-        }
 
         $stop = $menu.Items.Add("$($script:Sym.Stop) Monitoring beenden")
         $stop.add_Click({
