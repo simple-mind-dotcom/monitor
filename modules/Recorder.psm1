@@ -433,4 +433,4 @@ function Get-RecordingSize {
     return $sum
 }
 
-Export-ModuleMember -Function Start-ChannelRecording, Stop-ChannelRecording, Complete-PartialRecording, Test-ChannelRecording, Get-RecordingStatus, Get-RecordingSize, Get-OrphanRecorder, Update-RemuxJobs, Wait-RemuxJobs
+Export-ModuleMember -Function Start-ChannelRecording, Stop-ChannelRecording, Complete-PartialRecording, Test-ChannelRecording, Get-RecordingStatus, Get-RecordingSize, Get-OrphanRecorder, Update-RemuxJobs, Wait-RemuxJobs, ConvertTo-ArgumentString, Get-SafeFileName, Test-FreeDiskSpace

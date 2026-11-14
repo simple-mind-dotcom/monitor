@@ -3,11 +3,11 @@
 PowerShell 5.1, scoop, yt-dlp und FFmpeg. Keine weiteren Abhängigkeiten.
 
 ## Einrichtung
-1. `config.example.json` nach `config.json` kopieren (die Datei ist absichtlich nicht im Repo).
+1. `configs/config.example.json` nach `configs/config.json` kopieren (die Datei ist absichtlich nicht im Repo).
 2. **Twitch-API-Zugang** (kostenlos): auf https://dev.twitch.tv/console eine Anwendung registrieren
    (OAuth Redirect URL: `http://localhost`, Kategorie z. B. "Application Integration") und
-   `twitchClientId` / `twitchClientSecret` in `config.json` eintragen.
-3. `config.json` prüfen: `channels`, `pollInterval` (min. 15 Sekunden), `twitchConfigPath`, `outputDirectory`.
+   `twitchClientId` / `twitchClientSecret` in `configs/config.json` eintragen.
+3. `configs/config.json` prüfen: `channels`, `pollInterval` (min. 15 Sekunden), `twitchConfigPath`, `outputDirectory`.
 4. `yt-dlp` und `ffmpeg` müssen im PATH liegen (`scoop install yt-dlp ffmpeg`).
 
 ## Start
@@ -33,7 +33,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\twitch_monitor.ps1 -Re
 - Optionen: erweiterte Optionen in GUI verfügbar.
 - Logs in `logs\`: `monitor.log`, `<kanal>.log`, sowie die yt-dlp-Ausgabe `<kanal>.ytdlp.out.log` / `.err.log`.
   Der Log umfasst nur relevante Ereignisse (Start/Stop der Aufnahme, WARN/ERROR); Routine-Details stehen
-  mit `"logLevel": "DEBUG"` in `config.json` zusätzlich zur Verfügung. Leere yt-dlp-Logs sauber gelaufener
+  mit `"logLevel": "DEBUG"` in `configs/config.json` zusätzlich zur Verfügung. Leere yt-dlp-Logs sauber gelaufener
   Aufnahmen werden automatisch gelöscht.
 - Twitch-API: Bei Rate-Limit (HTTP 429) oder Serverfehlern wartet der Monitor mit exponentiellem Backoff
   (max. 30 min, `Retry-After` wird beachtet), bevor er erneut abfragt.
@@ -45,7 +45,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\twitch_monitor.ps1 -Re
 ## Bekannte Grenzen
 - Nur unter Windows 11 auf Lauffähigkeit getestet.
 - Mit `--hls-use-mpegts` (twitch.conf) bleibt nach einem Stopp per Ctrl+C eine `.part`-Datei (MPEG-TS) übrig.
-  Das Monitor-Skript remuxt sie danach per `ffmpeg -c copy` zu `.mp4` (optional `ffmpegPath` in `config.json`).
+  Das Monitor-Skript remuxt sie danach per `ffmpeg -c copy` zu `.mp4` (optional `ffmpegPath` in `configs/config.json`).
   Eingebettete Metadaten/Thumbnail fehlen bei solchen Dateien; endet der Stream normal, erledigt yt-dlp alles selbst.
 - `--cookies-from-browser firefox` (twitch.conf) kann scheitern, während Firefox läuft oder das Profil gesperrt ist.
   In dem Fall yt-dlp-Fehlermeldung in `<kanal>.ytdlp.err.log` prüfen.

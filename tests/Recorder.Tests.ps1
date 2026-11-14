@@ -56,7 +56,7 @@ Describe 'Get-RecordingSize Caching (Recorder)' -Tag 'Recorder' {
         Import-Module (Join-Path $PSScriptRoot '..\modules\Recorder.psm1') -Force -DisableNameChecking
         $tmp = Join-Path $TestDrive 'rec'
         New-Item -ItemType Directory -Path $tmp | Out-Null
-        [IO.File]::WriteAllBytes((Join-Path $tmp 'p1.part'), [byte[]](1, 2, 3))
+        [IO.File]::WriteAllBytes((Join-Path $tmp 'p.stream.part'), [byte[]](1, 2, 3))
         $script:state = @{ Channels = @{ chan = @{ OutputFolder = $tmp; OutputPrefix = 'p'; SizeCache = $null } } }
     }
 

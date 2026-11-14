@@ -274,4 +274,4 @@ function Update-DownloadJobs {
     }
 }
 
-Export-ModuleMember -Function Initialize-Downloader, Stop-Downloader, Request-SingleDownload, Start-SingleDownload, Update-DownloadJobs, Get-ActiveDownloadCount, Show-DownloadDialog, Test-DownloadUrl
+Export-ModuleMember -Function Initialize-Downloader, Stop-Downloader, Request-SingleDownload, Start-SingleDownload, Update-DownloadJobs, Get-ActiveDownloadCount, Show-DownloadDialog, Test-DownloadUrl, Get-LastDownloadError

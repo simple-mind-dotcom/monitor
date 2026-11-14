@@ -276,4 +276,4 @@ function Dispose-Tray {
     if ($State.Tray.ContextMenu) { $State.Tray.ContextMenu.Dispose(); $State.Tray.ContextMenu = $null }
 }
 
-Export-ModuleMember -Function Initialize-Tray, Update-Tray, Set-TrayStatus, Dispose-Tray, Show-TrayBalloon
+Export-ModuleMember -Function Initialize-Tray, Update-Tray, Set-TrayStatus, Dispose-Tray, Show-TrayBalloon, Format-Size
