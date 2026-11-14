@@ -29,7 +29,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\twitch_monitor.ps1 -Re
 
 ## Verhalten
 - GUI: Per Doppelklick aufs Tray-Icon oder dessen Kontextmenu öffnen
-- Tray-Icon: grau = überwacht, rot = Aufnahme läuft, orange = pausiert. Rechtsklick zeigt Status je Kanal.
+- Tray-Icon: grau = überwacht, rot = Aufnahme läuft, orange = pausiert. Rechtsklick zeigt Status je Kanal
+  (live/Aufnahme zuerst; auch deaktivierte Kanäle werden mit abgefragt und zeigen ihren Live-Status).
 - Optionen: erweiterte Optionen in GUI verfügbar.
 - Logs in `logs\`: `monitor.log`, `<kanal>.log`, sowie die yt-dlp-Ausgabe `<kanal>.ytdlp.out.log` / `.err.log`.
   Der Log umfasst nur relevante Ereignisse (Start/Stop der Aufnahme, WARN/ERROR); Routine-Details stehen

@@ -114,8 +114,10 @@ function Invoke-MonitorCycle {
     if ($State.ApiBackoffUntil -and (Get-Date) -lt $State.ApiBackoffUntil) { return }
 
     if ($State.PollJob) { return }   # vorige Abfrage läuft noch
-    $active = @($State.Channels.Keys | Where-Object { $State.Channels[$_].Enabled } | Sort-Object)
-    if ($active.Count -eq 0) { return }
+    # ALLE Kanäle abfragen - auch inaktive: dieselbe API-Anfrage (bis 100 Logins pro Aufruf),
+    # dafür zeigt das Tray den Live-Status auch bei deaktivierter Überwachung.
+    $targets = @($State.Channels.Keys | Sort-Object)
+    if ($targets.Count -eq 0) { return }
 
     # Token wiederverwenden, solange es gültig ist (5 Minuten Sicherheitsabstand sind in TokenExpiresAt enthalten).
     $token = $null
@@ -125,9 +127,9 @@ function Invoke-MonitorCycle {
         $cfg = $State.Config
         $checkVersion = (-not $State.YtDlpVersionChecked)
         $ps = [powershell]::Create()
-        [void]$ps.AddScript($script:PollScript).AddArgument($cfg.TwitchClientId).AddArgument($cfg.TwitchClientSecret).AddArgument($token).AddArgument($active).AddArgument($cfg.YtDlpPath).AddArgument($checkVersion)
+        [void]$ps.AddScript($script:PollScript).AddArgument($cfg.TwitchClientId).AddArgument($cfg.TwitchClientSecret).AddArgument($token).AddArgument($targets).AddArgument($cfg.YtDlpPath).AddArgument($checkVersion)
         $handle = $ps.BeginInvoke()
-        $State.PollJob = @{ PS = $ps; Handle = $handle; StartedAt = Get-Date; Channels = $active }
+        $State.PollJob = @{ PS = $ps; Handle = $handle; StartedAt = Get-Date; Channels = $targets }
     }
     catch {
         Write-Log -Level WARN -Message "Twitch-Abfrage konnte nicht gestartet werden: $($_.Exception.Message)"
@@ -222,8 +224,8 @@ function Update-MonitorPoll {
 
     foreach ($channel in $job.Channels) {
         $cs = $State.Channels[$channel]
-        # Der Kanal kann zwischenzeitlich entfernt oder deaktiviert worden sein.
-        if ($null -eq $cs -or -not $cs.Enabled) { continue }
+        # Der Kanal kann zwischenzeitlich entfernt worden sein.
+        if ($null -eq $cs) { continue }
         try {
             $isLive = $streams.ContainsKey($channel)
             $cs.LastCheck = Get-Date
@@ -231,6 +233,10 @@ function Update-MonitorPoll {
             $cs.ApiError = $null
             $cs.IsLive = $isLive
             $cs.Title = if ($isLive) { [string]$streams[$channel].Title } else { '' }
+
+            # Inaktive Kanäle: nur der Live-Status wird gesetzt und angezeigt; nichts starten/stoppen.
+            # Eine evtl. noch laufende Aufnahme räumt der nächste Zyklus auf (siehe Invoke-MonitorCycle).
+            if (-not $cs.Enabled) { continue }
 
             # Räumt außerdem einen von selbst beendeten yt-dlp-Prozess auf (und setzt ggf. den Neustart-Backoff).
             $recording = Get-RecordingStatus -Channel $channel -State $State
