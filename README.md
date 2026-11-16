@@ -32,12 +32,14 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\twitch_monitor.ps1 -Re
 - Tray-Icon: grau = überwacht, rot = Aufnahme läuft, orange = pausiert. Rechtsklick zeigt Status je Kanal
   (live/Aufnahme zuerst; auch deaktivierte Kanäle werden mit abgefragt und zeigen ihren Live-Status).
 - Optionen: erweiterte Optionen in GUI verfügbar.
-- Logs in `logs\`: `monitor.log`, `<kanal>.log`, sowie die yt-dlp-Ausgabe `<kanal>.ytdlp.out.log` / `.err.log`.
+- Logs in `logs\`: `monitor.log`, `<kanal>.log`, sowie die yt-dlp-Ausgabe `<kanal>.ytdlp.out.log` / `.err.log`
+  (ffmpeg-Logausgabe ist auf Warnungen/Fehler reduziert, damit die err.log klein bleibt).
   Der Log umfasst nur relevante Ereignisse (Start/Stop der Aufnahme, WARN/ERROR); Routine-Details stehen
   mit `"logLevel": "DEBUG"` in `configs/config.json` zusätzlich zur Verfügung. Leere yt-dlp-Logs sauber gelaufener
   Aufnahmen werden automatisch gelöscht.
-- Twitch-API: Bei Rate-Limit (HTTP 429) oder Serverfehlern wartet der Monitor mit exponentiellem Backoff
-  (max. 30 min, `Retry-After` wird beachtet), bevor er erneut abfragt.
+- Twitch-API: Bei Rate-Limit (HTTP 429), Serverfehlern oder Netzwerkproblemen (z. B. DNS) wartet der Monitor
+  mit exponentiellem Backoff (max. 30 min, `Retry-After` wird beachtet), bevor er erneut abfragt.
+  Sobald die Verbindung wieder steht, wird normal weitergemacht - ein Eingriff ist nicht nötig.
 - Speicherplatz: Startet keine neue Aufnahme, wenn auf dem Ziel-Laufwerk weniger als `minFreeDiskSpaceGB`
   (Standard 5) frei sind, und warnt per Benachrichtigung.
 - yt-dlp: Ist die installierte Version älter als 30 Tage, gibt es beim Start eine Warnung
