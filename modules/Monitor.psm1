@@ -194,15 +194,18 @@ function Update-MonitorPoll {
             $State.TwitchAccessToken = $null   # Token ungültig -> im nächsten Zyklus neu holen
             $State.TokenExpiresAt = $null
         }
-        # Rate-Limit/Serverfehler: mit exponentiellem Backoff (max. 30 min) das nächste Abfragen verzögern.
+        # Netzwerkfehler (DNS/Verbindung/Timeout, Code 0) sowie Rate-Limit/Serverfehler: mit exponentiellem
+        # Backoff das nächste Abfragen verzögern, statt bei jedem Zyklus erneut zu versuchen (Log-Spam).
         $code = [int]$result.Code
-        if ($code -eq 429 -or $code -ge 500) {
+        if ($code -le 0 -or $code -eq 429 -or $code -ge 500) {
             $State.ApiBackoffFails = [int]$State.ApiBackoffFails + 1
-            $delay = [Math]::Min(1800, 60 * [Math]::Pow(2, [Math]::Min([int]$State.ApiBackoffFails, 5) - 1))
+            $cap = if ($code -gt 0) { 1800 } else { 600 }
+            $delay = [Math]::Min($cap, 60 * [Math]::Pow(2, [Math]::Min([int]$State.ApiBackoffFails, 5) - 1))
             $retryAfter = [int]$result.RetryAfter
             if ($retryAfter -gt $delay) { $delay = [Math]::Min(1800, $retryAfter) }
             $State.ApiBackoffUntil = (Get-Date).AddSeconds($delay)
-            Write-Log -Level WARN -Message "Twitch-API (HTTP $code) - nächste Abfrage in $([int]$delay) s."
+            $kind = if ($code -gt 0) { "HTTP $code" } else { 'Netzwerkfehler (DNS/Verbindung)' }
+            Write-Log -Level WARN -Message "Twitch-Abfrage ($kind) - nächste Abfrage in $([int]$delay) s."
         }
         foreach ($channel in $job.Channels) {
             $cs = $State.Channels[$channel]

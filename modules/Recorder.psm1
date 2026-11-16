@@ -164,7 +164,9 @@ function Start-ChannelRecording {
         }
         # --no-progress / -nostats: verhindern, dass die umgeleiteten Logs mit Fortschrittszeilen volllaufen
         # (ffmpeg schrieb sonst ca. 90 MB pro Tag in <kanal>.ytdlp.err.log).
-        $ytArgs += @('--no-progress', '--downloader-args', 'ffmpeg:-nostats', '-o', $outputTemplate, "https://www.twitch.tv/$Channel")
+        # -loglevel warning: ffmpeg meldet sonst JEDES HLS-Segment ("Opening '...' for reading") - reine
+        # Info-Meldungen, die über viele Stunden Aufzeichnung die err.log aufblähen. Fehler/Warnungen bleiben sichtbar.
+        $ytArgs += @('--no-progress', '--downloader-args', 'ffmpeg:-nostats -loglevel warning', '-o', $outputTemplate, "https://www.twitch.tv/$Channel")
 
         $logBase = Join-Path $State.LogPath "$Channel.ytdlp"
 
