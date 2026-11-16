@@ -6,6 +6,7 @@
   "twitchConfigPath": "configs\\twitch.conf",
   "outputDirectory": "~\\Videos\\twitch",
   "ytDlpPath": "yt-dlp",
+  "ffmpegPath": "ffmpeg",
   "twitchClientId": "",
   "twitchClientSecret": "",
   "pollInterval": 30,
