@@ -83,6 +83,26 @@ function Format-GuiSpan {
     return ('{0:00}:{1:00}:{2:00}' -f [int][Math]::Floor($Span.TotalHours), $Span.Minutes, $Span.Seconds)
 }
 
+function Get-GuiDiskStatus {
+    # Freier Speicherplatz auf dem Laufwerk des Aufnahme-Ordners, bewertet gegen minFreeDiskSpaceGB:
+    # 'ok' (>= 2x Minimum), 'low' (< 2x Minimum), 'critical' (< Minimum - Recorder startet dann ohnehin nicht).
+    # $null, wenn das Laufwerk nicht ermittelt werden kann (z. B. UNC-Pfad).
+    param([Parameter(Mandatory)][hashtable]$State)
+    try {
+        $drive = New-Object IO.DriveInfo([string]$State.Config.OutputDirectory)
+        $freeGB = $drive.AvailableFreeSpace / 1GB
+        $min = 5.0
+        if ($State.Config.MinFreeDiskSpaceGB) { $min = [double]$State.Config.MinFreeDiskSpaceGB }
+        $level = 'ok'
+        if ($min -gt 0) {
+            if ($freeGB -lt $min) { $level = 'critical' }
+            elseif ($freeGB -lt (2 * $min)) { $level = 'low' }
+        }
+        return @{ Drive = $drive.Name; FreeGB = $freeGB; Level = $level }
+    }
+    catch { return $null }
+}
+
 function Resolve-GuiPath {
     param([string]$Path)
     if ([string]::IsNullOrWhiteSpace($Path)) { return '' }
@@ -235,7 +255,20 @@ function Update-MainWindow {
         $head = if ($State.ConfigError) { 'Konfigurationsfehler' }
                 elseif ($State.IsPaused) { 'Pausiert' }
                 else { 'Überwacht: ' + @($State.Channels.Values | Where-Object { $_.Enabled }).Count + ' Kanäle' }
-        $c.StatusLabel.Text = "$head`r`nAufnahmen: $rec`r`nDownloads: $dl" + $(if ($polling) { "`r`nAbfrage läuft ..." } else { '' })
+        # Speicherplatz-Widget: Toolbar-Label + Zeile in der Seitenleiste, farbcodiert.
+        $disk = Get-GuiDiskStatus -State $State
+        if ($c.DiskLabel) {
+            if ($disk) {
+                $c.DiskLabel.Text = '{0:N0} GB frei ({1})' -f $disk.FreeGB, $disk.Drive
+                $c.DiskLabel.ForeColor = if ($disk.Level -eq 'critical') { $t.Danger } elseif ($disk.Level -eq 'low') { $t.Warn } else { $t.Muted }
+                if ($disk.Level -eq 'critical') { $c.DiskLabel.Text = "⚠ $($c.DiskLabel.Text) - keine neuen Aufnahmen" }
+            }
+            else { $c.DiskLabel.Text = ''; }
+        }
+        $statusLines = @($head, "Aufnahmen: $rec", "Downloads: $dl")
+        if ($disk) { $statusLines += ('Speicher: {0:N0} GB frei ({1})' -f $disk.FreeGB, $disk.Drive) }
+        if ($polling) { $statusLines += 'Abfrage läuft ...' }
+        $c.StatusLabel.Text = ($statusLines -join "`r`n")
         $c.StatusLabel.ForeColor = if ($State.ConfigError) { $t.Danger } else { $t.SidebarMuted }
 
         if ($State.ConfigError) {
@@ -789,6 +822,13 @@ function New-GuiOverviewPage {
     $newDl = New-GuiButton -Text 'Neuer Download ...' -Width 150 -Style primary
     $stopMon = New-GuiButton -Text 'Monitoring beenden' -Width 160 -Style danger
     $exitApp = New-GuiButton -Text 'App beenden' -Width 110 -Style danger
+    # Speicherplatz-Widget: freier Platz auf dem Aufnahme-Laufwerk, farbcodiert (siehe Update-MainWindow).
+    $disk = New-Object System.Windows.Forms.Label
+    $disk.AutoSize = $true
+    $disk.Font = $gui.Fonts.Base
+    $disk.ForeColor = $t.Muted
+    $disk.Margin = New-Object System.Windows.Forms.Padding(18, 9, 0, 0)
+    $gui.Controls.DiskLabel = $disk
     $gui.Controls.PauseButton = $pause
     $gui.Controls.CheckButton = $check
 
@@ -828,7 +868,7 @@ function New-GuiOverviewPage {
         catch { Write-Log -Level ERROR -Message "GUI (Beenden): $($_.Exception.Message)" }
     }.GetNewClosure())
 
-    $bar.Controls.AddRange(@($pause, $check, $folder, $newDl, $stopMon, $exitApp))
+    $bar.Controls.AddRange(@($pause, $check, $folder, $newDl, $stopMon, $exitApp, $disk))
     $p.Page.Controls.Add((New-GuiCard -Child $lv))   # Fill zuerst, dann Leiste, dann Kopf (Dock-Reihenfolge)
     $p.Page.Controls.Add($bar)
     $p.Page.Controls.Add($p.Header)
@@ -1238,4 +1278,4 @@ function Dispose-Gui {
     try { if ($gui.Form -and -not $gui.Form.IsDisposed) { $gui.Form.Dispose() }; $gui.Form = $null } catch { }
 }
 
-Export-ModuleMember -Function Show-MainWindow, Update-MainWindow, Dispose-Gui, Set-GuiPage, Save-GuiSettings, Import-GuiFields, Import-GuiConf, Save-GuiConf, Update-GuiLogList, Update-GuiLog, Set-GuiTitleBarTheme
+Export-ModuleMember -Function Show-MainWindow, Update-MainWindow, Dispose-Gui, Set-GuiPage, Save-GuiSettings, Import-GuiFields, Import-GuiConf, Save-GuiConf, Update-GuiLogList, Update-GuiLog, Set-GuiTitleBarTheme, Get-GuiDiskStatus
