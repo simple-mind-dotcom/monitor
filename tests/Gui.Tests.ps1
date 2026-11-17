@@ -25,8 +25,8 @@ Describe 'Get-GuiDiskStatus (Gui)' -Tag 'Gui' {
         $status.FreeGB | Should -BeGreaterThan 0
     }
 
-    It "liefert keinen Status fuer einen ungueltigen Pfad" {
-        $state = @{ Config = @{ OutputDirectory = 'Q:\gibt-es-nicht\xyz'; MinFreeDiskSpaceGB = 5 } }
+    It "liefert keinen Status fuer einen UNC-Pfad" {
+        $state = @{ Config = @{ OutputDirectory = '\\server\share\aufnahmen'; MinFreeDiskSpaceGB = 5 } }
         Get-GuiDiskStatus -State $state | Should -BeNullOrEmpty
     }
 }
