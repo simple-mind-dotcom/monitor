@@ -19,19 +19,39 @@ Add-Type -AssemblyName System.Drawing
 try { [System.Windows.Forms.Application]::SetUnhandledExceptionMode([System.Windows.Forms.UnhandledExceptionMode]::CatchException) } catch { }
 
 # -Global: Module rufen sich gegenseitig auf (z. B. Monitor -> Recorder), das braucht globale Sichtbarkeit.
-# Gui ist optional: fehlt modules\Gui.psm1, läuft alles wie vorher (ohne Fenster).
-$moduleNames = @('Logging', 'Config', 'Recorder', 'Downloader', 'Monitor', 'Tray', 'Startup')
-if (Test-Path -LiteralPath (Join-Path $script:ProjectRoot 'modules\Gui.psm1')) { $moduleNames += 'Gui' }
-foreach ($name in $moduleNames) {
-    Import-Module (Join-Path $script:ProjectRoot "modules\$name.psm1") -Force -Global -DisableNameChecking -ErrorAction Stop
+# Module sind optional: fehlt die Datei unter modules\, fällt das zugehörige Feature einfach weg
+# (z. B. Recorder -> keine Aufnahmen, Downloader -> keine Einzeldownloads, Tray -> kein Icon, Gui -> kein Fenster).
+# Nur Logging und Config sind Pflicht: ohne Logging kein Protokoll, ohne Config keine Einstellungen/Kanäle.
+$moduleDir = Join-Path $script:ProjectRoot 'modules'
+foreach ($name in @('Logging', 'Config')) {
+    $path = Join-Path $moduleDir "$name.psm1"
+    if (-not (Test-Path -LiteralPath $path)) {
+        Write-Host "Pflichtmodul fehlt: $path - ohne Logging/Config kann die App nicht starten."
+        exit 1
+    }
+    Import-Module $path -Force -Global -DisableNameChecking -ErrorAction Stop
+}
+foreach ($name in @('Recorder', 'Downloader', 'Monitor', 'Tray', 'Startup', 'Gui')) {
+    $path = Join-Path $moduleDir "$name.psm1"
+    if (Test-Path -LiteralPath $path) {
+        Import-Module $path -Force -Global -DisableNameChecking -ErrorAction Stop
+    }
 }
 
 if ($InstallAutoStart) {
+    if (-not (Get-Command Register-AutoStart -ErrorAction SilentlyContinue)) {
+        Write-Host "Autostart nicht möglich: modules\Startup.psm1 fehlt."
+        exit 1
+    }
     Register-AutoStart -ScriptPath $PSCommandPath
     Write-Host "Autostart-Task 'TwitchMonitor' wurde für die Anmeldung registriert."
     return
 }
 if ($RemoveAutoStart) {
+    if (-not (Get-Command Unregister-AutoStart -ErrorAction SilentlyContinue)) {
+        Write-Host "Autostart kann nicht entfernt werden: modules\Startup.psm1 fehlt."
+        exit 1
+    }
     Unregister-AutoStart
     Write-Host "Autostart-Task 'TwitchMonitor' wurde entfernt."
     return
@@ -73,6 +93,7 @@ $script:AppState = @{
     DownloadJobs    = New-Object System.Collections.ArrayList
     DownloadHistory = New-Object System.Collections.ArrayList
     StoppingPollJobs = New-Object System.Collections.ArrayList
+    Features        = @{}   # wird nach dem Start gefüllt: welches optionale Modul ist vorhanden
     ApiBackoffUntil = $null
     ApiBackoffFails = 0
     YtDlpVersionChecked = $false
@@ -84,36 +105,63 @@ $script:AppState = @{
 try {
     Initialize-Logging -LogDirectory $script:AppState.LogPath
     Write-Log -Level INFO -Message 'Twitch Monitor wird gestartet.'
-    $script:GuiAvailable = [bool](Get-Command Show-MainWindow -ErrorAction SilentlyContinue)
-    Write-Log -Level DEBUG -Message ("GUI-Modul: " + $(if ($script:GuiAvailable) { 'geladen (Fenster: Tray-Doppelklick oder Start mit -ShowWindow)' } else { 'nicht vorhanden' }))
     $script:AppState.Config = Initialize-Config -Path (Join-Path $script:ProjectRoot 'configs/config.json')
     Set-LogLevel -Level $script:AppState.Config.LogLevel
-    foreach ($channel in $script:AppState.Config.Channels) {
-        $script:AppState.Channels[$channel] = New-ChannelState -Name $channel
-    }
-    Write-Log -Level DEBUG -Message ("Überwachte Kanäle: " + ($script:AppState.Config.Channels -join ', '))
 
-    # Per Tray-Menü deaktivierte Kanäle (state.json) wiederherstellen.
-    $disabledChannels = @(Get-DisabledChannels -Path $script:AppState.StatePath)
-    foreach ($disabledName in $disabledChannels) {
-        if ($script:AppState.Channels.ContainsKey($disabledName)) { $script:AppState.Channels[$disabledName].Enabled = $false }
+    # Verfügbare Features hängen daran, welche optionalen Moduldateien existieren.
+    # Fehlt eine Datei, fällt das Feature still weg (kein Fehler, es wird nur protokolliert).
+    $script:AppState.Features = @{
+        Recorder   = [bool](Get-Command Start-ChannelRecording -ErrorAction SilentlyContinue)
+        Downloader = [bool](Get-Command Initialize-Downloader -ErrorAction SilentlyContinue)
+        Monitor    = [bool](Get-Command Start-Monitor -ErrorAction SilentlyContinue)
+        Tray       = [bool](Get-Command Initialize-Tray -ErrorAction SilentlyContinue)
+        Startup    = [bool](Get-Command Register-AutoStart -ErrorAction SilentlyContinue)
+        Gui        = [bool](Get-Command Show-MainWindow -ErrorAction SilentlyContinue)
     }
-    if ($disabledChannels.Count -gt 0) {
-        Write-Log -Level DEBUG -Message ("Inaktive Kanäle: " + ($disabledChannels -join ', '))
+    $missingFeatures = @($script:AppState.Features.Keys | Where-Object { -not $script:AppState.Features[$_] } | Sort-Object)
+    if ($missingFeatures.Count -gt 0) {
+        Write-Log -Level INFO -Message ("Optionale Module nicht gefunden - Features deaktiviert: " + ($missingFeatures -join ', '))
+    }
+    Write-Log -Level DEBUG -Message ("Aktive Features: " + (@($script:AppState.Features.Keys | Where-Object { $script:AppState.Features[$_] } | Sort-Object) -join ', '))
+
+    if ($script:AppState.Features.Monitor) {
+        foreach ($channel in $script:AppState.Config.Channels) {
+            $script:AppState.Channels[$channel] = New-ChannelState -Name $channel
+        }
+        Write-Log -Level DEBUG -Message ("Überwachte Kanäle: " + ($script:AppState.Config.Channels -join ', '))
+
+        # Per Tray-Menü deaktivierte Kanäle (state.json) wiederherstellen.
+        $disabledChannels = @(Get-DisabledChannels -Path $script:AppState.StatePath)
+        foreach ($disabledName in $disabledChannels) {
+            if ($script:AppState.Channels.ContainsKey($disabledName)) { $script:AppState.Channels[$disabledName].Enabled = $false }
+        }
+        if ($disabledChannels.Count -gt 0) {
+            Write-Log -Level DEBUG -Message ("Inaktive Kanäle: " + ($disabledChannels -join ', '))
+        }
+    }
+    else {
+        Write-Log -Level INFO -Message 'Monitor-Modul nicht vorhanden - es werden keine Kanäle überwacht.'
     }
 
-    if (-not $NoTray) {
+    if (-not $NoTray -and $script:AppState.Features.Tray) {
         Initialize-Tray -State $script:AppState
+    }
+    elseif (-not $NoTray) {
+        Write-Log -Level INFO -Message 'Tray-Modul nicht vorhanden - es gibt kein Tray-Icon.'
     }
 
     # Einzeldownloads (unabhängig vom Monitoring, funktioniert auch bei Konfigurationsfehlern).
-    Initialize-Downloader -State $script:AppState
+    if ($script:AppState.Features.Downloader) {
+        Initialize-Downloader -State $script:AppState
+    }
 
-    Start-Monitor -State $script:AppState
+    if ($script:AppState.Features.Monitor) {
+        Start-Monitor -State $script:AppState
+    }
 
     # Optionales Fenster beim Start. Fehler hier dürfen den Start nicht verhindern.
     if ($ShowWindow) {
-        if ($script:GuiAvailable) {
+        if ($script:AppState.Features.Gui) {
             try {
                 Show-MainWindow -State $script:AppState
                 Write-Log -Level INFO -Message 'Hauptfenster geöffnet.'
@@ -125,15 +173,19 @@ try {
         }
     }
 
-    if (-not $NoTray) {
+    if (-not $NoTray -and $script:AppState.Features.Tray) {
         [System.Windows.Forms.Application]::Run()
     }
-    else {
+    elseif ($script:AppState.Features.Monitor -or $script:AppState.Features.Downloader) {
         Write-Log -Level INFO -Message 'NoTray-Modus: Monitor läuft bis zum Abbruch.'
         while ($script:AppState.IsRunning) {
             [System.Windows.Forms.Application]::DoEvents()   # damit die Timer auch ohne Tray feuern
             Start-Sleep -Milliseconds 200
         }
+    }
+    else {
+        Write-Log -Level WARN -Message 'Weder Tray noch Monitoring/Downloads vorhanden - nichts zu tun, die App beendet sich.'
+        $script:AppState.IsRunning = $false
     }
 }
 catch {
@@ -145,13 +197,13 @@ finally {
     # Bei "Beenden (App)" ist IsRunning schon $false - dort bleiben Aufnahmen bewusst am Laufen.
     # Bei abnormalem Ende werden Aufnahmen immer sauber beendet (Ctrl+C + Remux), statt sie zu verwaisen.
     try {
-        if ($script:AppState.IsRunning) {
+        if ($script:AppState.IsRunning -and $script:AppState.Features.Monitor) {
             Stop-Monitor -State $script:AppState -StopRecordings $true
         }
     }
     catch { Write-Log -Level ERROR -Message "Cleanup (Stop-Monitor): $($_.Exception.Message)" }
 
-    try { Stop-Downloader -State $script:AppState }
+    try { if ($script:AppState.Features.Downloader) { Stop-Downloader -State $script:AppState } }
     catch { Write-Log -Level ERROR -Message "Cleanup (Downloader): $($_.Exception.Message)" }
 
     try { if (Get-Command Dispose-Gui -ErrorAction SilentlyContinue) { Dispose-Gui } }

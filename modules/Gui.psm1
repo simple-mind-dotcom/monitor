@@ -173,7 +173,7 @@ function Get-GuiChannelRows {
     $rows = @()
     foreach ($name in @($State.Channels.Keys | Sort-Object)) {
         $cs = $State.Channels[$name]
-        $rec = Test-ChannelRecording -Channel $name -State $State
+        $rec = if (Get-Command Test-ChannelRecording -ErrorAction SilentlyContinue) { [bool](Test-ChannelRecording -Channel $name -State $State) } else { $false }
         $unknown = $false
         if (-not $State.IsPaused -and $cs.Enabled) {
             if ($cs.ApiError) { $unknown = $true }
@@ -250,8 +250,10 @@ function Update-MainWindow {
         $c.CheckButton.Enabled = (-not $State.ConfigError) -and (-not $State.IsPaused) -and (-not $polling)
 
         $rec = 0
-        foreach ($n in @($State.Channels.Keys)) { if (Test-ChannelRecording -Channel $n -State $State) { $rec++ } }
-        $dl = Get-ActiveDownloadCount -State $State
+        if (Get-Command Test-ChannelRecording -ErrorAction SilentlyContinue) {
+            foreach ($n in @($State.Channels.Keys)) { if (Test-ChannelRecording -Channel $n -State $State) { $rec++ } }
+        }
+        $dl = if (Get-Command Get-ActiveDownloadCount -ErrorAction SilentlyContinue) { Get-ActiveDownloadCount -State $State } else { 0 }
         $head = if ($State.ConfigError) { 'Konfigurationsfehler' }
                 elseif ($State.IsPaused) { 'Pausiert' }
                 else { 'Überwacht: ' + @($State.Channels.Values | Where-Object { $_.Enabled }).Count + ' Kanäle' }
@@ -415,7 +417,9 @@ function Update-RuntimeConfig {
     $disabled = @(Get-DisabledChannels -Path $State.StatePath)
     foreach ($name in $NewConfig.Channels) {
         if (-not $State.Channels.ContainsKey($name)) {
-            $cs = New-ChannelState -Name $name
+            # Monitor-Modul ist optional - ohne es reicht ein minimaler Kanalsatz.
+            if (Get-Command New-ChannelState -ErrorAction SilentlyContinue) { $cs = New-ChannelState -Name $name }
+            else { $cs = @{ Name = $name; Enabled = $true } }
             if ($disabled -contains $name) { $cs.Enabled = $false }
             $State.Channels[$name] = $cs
             Write-Log -Channel $name -Level INFO -Message 'Kanal über die Oberfläche hinzugefügt.'
@@ -441,7 +445,7 @@ function Update-RuntimeConfig {
     if ($problems.Count -eq 0) {
         $State.ConfigError = $null
         # War das Monitoring wegen eines Konfigurationsfehlers nie gestartet, startet es jetzt.
-        if (-not $State.Timers.Monitor -and $State.IsRunning) { Start-Monitor -State $State }
+        if (-not $State.Timers.Monitor -and $State.IsRunning -and (Get-Command Start-Monitor -ErrorAction SilentlyContinue)) { Start-Monitor -State $State }
     }
     else {
         $State.ConfigError = $problems -join '; '
@@ -808,8 +812,10 @@ function New-GuiOverviewPage {
         $hit = $s.HitTest($e.Location)
         if ($hit.Item -and $e.X -lt $s.Columns[0].Width) {
             try {
-                Set-ChannelEnabled -State $State -Channel $hit.Item.Name -Enabled (-not [bool]$hit.Item.Tag)
-                Update-MainWindow -State $State
+                if (Get-Command Set-ChannelEnabled -ErrorAction SilentlyContinue) {
+                    Set-ChannelEnabled -State $State -Channel $hit.Item.Name -Enabled (-not [bool]$hit.Item.Tag)
+                    Update-MainWindow -State $State
+                }
             }
             catch { Write-Log -Level ERROR -Message "GUI (Kanal umschalten): $($_.Exception.Message)" }
         }
@@ -822,6 +828,13 @@ function New-GuiOverviewPage {
     $newDl = New-GuiButton -Text 'Neuer Download ...' -Width 150 -Style primary
     $stopMon = New-GuiButton -Text 'Monitoring beenden' -Width 160 -Style danger
     $exitApp = New-GuiButton -Text 'App beenden' -Width 110 -Style danger
+    # Feature-Buttons ausblenden, wenn das zugehörige Modul fehlt (module-abhängige Features).
+    $hasMonitor = [bool](Get-Command Start-Monitor -ErrorAction SilentlyContinue)
+    $hasDownloader = [bool](Get-Command Request-SingleDownload -ErrorAction SilentlyContinue)
+    $pause.Visible = $hasMonitor
+    $check.Visible = $hasMonitor
+    $stopMon.Visible = $hasMonitor
+    $newDl.Visible = $hasDownloader
     # Speicherplatz-Widget: freier Platz auf dem Aufnahme-Laufwerk, farbcodiert (siehe Update-MainWindow).
     $disk = New-Object System.Windows.Forms.Label
     $disk.AutoSize = $true
@@ -864,7 +877,10 @@ function New-GuiOverviewPage {
     $exitApp.add_Click({
         $q = 'App beenden? Laufende Aufnahmen laufen im Hintergrund weiter (ohne Nachbearbeitung durch die App).'
         if ([System.Windows.Forms.MessageBox]::Show($q, 'Twitch Monitor', [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question) -ne [System.Windows.Forms.DialogResult]::Yes) { return }
-        try { Stop-Monitor -State $State -StopRecordings $false }
+        try {
+            if (Get-Command Stop-Monitor -ErrorAction SilentlyContinue) { Stop-Monitor -State $State -StopRecordings $false }
+            else { $State.IsRunning = $false; [System.Windows.Forms.Application]::Exit() }
+        }
         catch { Write-Log -Level ERROR -Message "GUI (Beenden): $($_.Exception.Message)" }
     }.GetNewClosure())
 
@@ -1167,12 +1183,14 @@ function New-MainWindow {
     $content = New-Object System.Windows.Forms.Panel
     $content.Dock = 'Fill'
     $content.BackColor = $t.Bg
-    foreach ($page in @(
-            (New-GuiOverviewPage -State $State -gui $gui),
-            (New-GuiDownloadsPage -State $State -gui $gui),
-            (New-GuiSettingsPage -State $State -gui $gui),
-            (New-GuiConfPage -State $State -gui $gui),
-            (New-GuiLogPage -State $State -gui $gui))) {
+    # Downloads-Seite nur, wenn das Downloader-Modul vorhanden ist (optionales Feature).
+    $hasDownloader = [bool](Get-Command Request-SingleDownload -ErrorAction SilentlyContinue)
+    $pages = @((New-GuiOverviewPage -State $State -gui $gui))
+    if ($hasDownloader) { $pages += (New-GuiDownloadsPage -State $State -gui $gui) }
+    $pages += (New-GuiSettingsPage -State $State -gui $gui)
+    $pages += (New-GuiConfPage -State $State -gui $gui)
+    $pages += (New-GuiLogPage -State $State -gui $gui)
+    foreach ($page in $pages) {
         $content.Controls.Add($page)
     }
 
@@ -1191,9 +1209,9 @@ function New-MainWindow {
     $gui.Controls.StatusLabel = $status
     $sidebar.Controls.Add($status)
 
-    $navItems = @(
-        @('Overview', 'Übersicht'), @('Downloads', 'Downloads'), @('Settings', 'Einstellungen'),
-        @('Configs', 'yt-dlp-Configs'), @('Log', 'Log'))
+    $navItems = @(@('Overview', 'Übersicht'))
+    if ($hasDownloader) { $navItems += ,@('Downloads', 'Downloads') }   # Komma: Unterarray erhalten
+    $navItems += @(@('Settings', 'Einstellungen'), @('Configs', 'yt-dlp-Configs'), @('Log', 'Log'))
     for ($i = $navItems.Count - 1; $i -ge 0; $i--) {
         $pageName = [string]$navItems[$i][0]
         $btn = New-Object System.Windows.Forms.Button

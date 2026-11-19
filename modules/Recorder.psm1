@@ -119,7 +119,10 @@ function Test-FreeDiskSpace {
         $cs.FailCount = [int]$cs.FailCount + 1
         $cs.NextStartAt = (Get-Date).AddSeconds(300)
         Write-Log -Channel $Channel -Level ERROR -Message "Keine Aufnahme gestartet: $($cs.LastError) (nächster Versuch in 300 s)"
-        Show-TrayBalloon -State $State -Title 'Speicherplatz niedrig' -Text "$($Channel): nur noch $([Math]::Round($freeGB, 1)) GB frei - Aufnahme verzögert." -IsError $true
+        # Tray-Modul ist optional - ohne es nur loggen.
+        if (Get-Command Show-TrayBalloon -ErrorAction SilentlyContinue) {
+            Show-TrayBalloon -State $State -Title 'Speicherplatz niedrig' -Text "$($Channel): nur noch $([Math]::Round($freeGB, 1)) GB frei - Aufnahme verzögert." -IsError $true
+        }
     }
     catch { return $true }
 }

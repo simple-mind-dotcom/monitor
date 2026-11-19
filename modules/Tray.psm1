@@ -89,9 +89,13 @@ function Update-Tray {
         $notify = $State.Tray.NotifyIcon
         if (-not $menu -or -not $notify) { return }
 
+        # Recorder-Modul ist optional - ohne es gibt es keine Aufnahmen und keine Aufnahme-Anzeigen.
+        $recOk = [bool](Get-Command Test-ChannelRecording -ErrorAction SilentlyContinue)
         $recCount = 0
-        foreach ($name in @($State.Channels.Keys)) {
-            if (Test-ChannelRecording -Channel $name -State $State) { $recCount++ }
+        if ($recOk) {
+            foreach ($name in @($State.Channels.Keys)) {
+                if (Test-ChannelRecording -Channel $name -State $State) { $recCount++ }
+            }
         }
 
         # Icon + Tooltip bei jedem Tick aktualisieren.
@@ -137,7 +141,7 @@ function Update-Tray {
             $sorted = @($State.Channels.Keys | ForEach-Object {
                 $c = $State.Channels[$_]
                 $p = 2
-                if ($c.IsLive -or (Test-ChannelRecording -Channel $_ -State $State)) { $p = 0 }
+                if ($c.IsLive -or ($recOk -and (Test-ChannelRecording -Channel $_ -State $State))) { $p = 0 }
                 elseif (-not $c.Enabled) { $p = 3 }
                 elseif (Test-ChannelStatusUnknown -State $State -ChannelState $c) { $p = 1 }
                 [pscustomobject]@{ Priority = $p; Name = [string]$_ }
@@ -148,7 +152,7 @@ function Update-Tray {
                 $suffix = if ($unknown) { " ($($script:Sym.Warn) Status unbekannt)" } else { '' }
 
                 if (-not $cs.Enabled) {
-                    if (Test-ChannelRecording -Channel $channel -State $State) {
+                    if ($recOk -and (Test-ChannelRecording -Channel $channel -State $State)) {
                         $item = $menu.Items.Add("$($script:Sym.Live) $channel (inaktiv $($script:Sym.Dash) Aufnahme läuft)")
                         $item.Enabled = $false
                         if ($cs.StartedAt) {
@@ -204,29 +208,32 @@ function Update-Tray {
                 }
             }
 
-            # Untermenü: einzelne Kanäle aktiv (Haken) oder inaktiv schalten.
-            $sub = New-Object System.Windows.Forms.ToolStripMenuItem -ArgumentList 'Aktive Kanäle:'
-            foreach ($channel in @($State.Channels.Keys | Sort-Object)) {
-                $label = $channel -replace '&', '&&'
-                if ($State.Channels[$channel].IsLive) { $label = "$label  $($script:Sym.Live)" }
-                $entry = New-Object System.Windows.Forms.ToolStripMenuItem -ArgumentList $label
-                $entry.Checked = [bool]$State.Channels[$channel].Enabled
-                # GetNewClosure: $channel und $State müssen im Handler pro Eintrag erhalten bleiben.
-                $entry.add_Click({
-                    try {
-                        Set-ChannelEnabled -State $State -Channel $channel -Enabled (-not [bool]$State.Channels[$channel].Enabled)
-                        Update-Tray -State $State
-                    }
-                    catch { Write-Log -Level ERROR -Message "Tray (Kanal umschalten): $($_.Exception.Message)" }
-                }.GetNewClosure())
-                [void]$sub.DropDownItems.Add($entry)
+            # Untermenü: einzelne Kanäle aktiv (Haken) oder inaktiv schalten. Nur mit Monitor-Modul,
+            # ohne das die Kanalschalter wirkungslos wären.
+            if (Get-Command Set-ChannelEnabled -ErrorAction SilentlyContinue) {
+                $sub = New-Object System.Windows.Forms.ToolStripMenuItem -ArgumentList 'Aktive Kanäle:'
+                foreach ($channel in @($State.Channels.Keys | Sort-Object)) {
+                    $label = $channel -replace '&', '&&'
+                    if ($State.Channels[$channel].IsLive) { $label = "$label  $($script:Sym.Live)" }
+                    $entry = New-Object System.Windows.Forms.ToolStripMenuItem -ArgumentList $label
+                    $entry.Checked = [bool]$State.Channels[$channel].Enabled
+                    # GetNewClosure: $channel und $State müssen im Handler pro Eintrag erhalten bleiben.
+                    $entry.add_Click({
+                        try {
+                            Set-ChannelEnabled -State $State -Channel $channel -Enabled (-not [bool]$State.Channels[$channel].Enabled)
+                            Update-Tray -State $State
+                        }
+                        catch { Write-Log -Level ERROR -Message "Tray (Kanal umschalten): $($_.Exception.Message)" }
+                    }.GetNewClosure())
+                    [void]$sub.DropDownItems.Add($entry)
+                }
+                [void]$menu.Items.Add($sub)
             }
-            [void]$menu.Items.Add($sub)
         }
 
         [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
 
-        if (-not $State.ConfigError) {
+        if (-not $State.ConfigError -and (Get-Command Pause-Monitor -ErrorAction SilentlyContinue)) {
             $toggleText = if ($State.IsPaused) { "$($script:Sym.Play) Fortsetzen" } else { "$($script:Sym.Pause) Pausieren" }
             $toggle = $menu.Items.Add($toggleText)
             $toggle.add_Click({
@@ -247,27 +254,35 @@ function Update-Tray {
             }
             catch { Write-Log -Level ERROR -Message "Tray (Ordner öffnen): $($_.Exception.Message)" }
         }.GetNewClosure())
-		$dl = $menu.Items.Add("$($script:Sym.Down) Download (Link)...")
-		$dl.add_Click({
-			try { Request-SingleDownload -State $State }
-			catch { Write-Log -Level ERROR -Message "Tray (Download): $($_.Exception.Message)" }
-		}.GetNewClosure())
-		$dlCount = Get-ActiveDownloadCount -State $State
-		if ($dlCount -gt 0) {
-			$dlInfo = $menu.Items.Add("   $($script:Sym.Disk) $dlCount Download(s) laufen")
-			$dlInfo.Enabled = $false
-		}
+        # Download-Einträge nur mit Downloader-Modul.
+        if (Get-Command Request-SingleDownload -ErrorAction SilentlyContinue) {
+            $dl = $menu.Items.Add("$($script:Sym.Down) Download (Link)...")
+            $dl.add_Click({
+                try { Request-SingleDownload -State $State }
+                catch { Write-Log -Level ERROR -Message "Tray (Download): $($_.Exception.Message)" }
+            }.GetNewClosure())
+            $dlCount = Get-ActiveDownloadCount -State $State
+            if ($dlCount -gt 0) {
+                $dlInfo = $menu.Items.Add("   $($script:Sym.Disk) $dlCount Download(s) laufen")
+                $dlInfo.Enabled = $false
+            }
+        }
         [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
 
-        $stop = $menu.Items.Add("$($script:Sym.Stop) Monitoring beenden")
-        $stop.add_Click({
-            try { Stop-Monitor -State $State -StopRecordings $true }
-            catch { Write-Log -Level ERROR -Message "Tray (Monitoring beenden): $($_.Exception.Message)" }
-        }.GetNewClosure())
+        if (Get-Command Stop-Monitor -ErrorAction SilentlyContinue) {
+            $stop = $menu.Items.Add("$($script:Sym.Stop) Monitoring beenden")
+            $stop.add_Click({
+                try { Stop-Monitor -State $State -StopRecordings $true }
+                catch { Write-Log -Level ERROR -Message "Tray (Monitoring beenden): $($_.Exception.Message)" }
+            }.GetNewClosure())
+        }
 
         $exit = $menu.Items.Add('Beenden (App)')
         $exit.add_Click({
-            try { Stop-Monitor -State $State -StopRecordings $false }
+            try {
+                if (Get-Command Stop-Monitor -ErrorAction SilentlyContinue) { Stop-Monitor -State $State -StopRecordings $false }
+                else { $State.IsRunning = $false; [System.Windows.Forms.Application]::Exit() }
+            }
             catch { Write-Log -Level ERROR -Message "Tray (Beenden): $($_.Exception.Message)" }
         }.GetNewClosure())
     }

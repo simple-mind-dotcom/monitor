@@ -1,3 +1,9 @@
+function Test-RecorderFeature {
+    # Recorder-Modul ist optional: ohne modules\Recorder.psm1 gibt es keine Aufnahmen -
+    # der Monitor zeigt dann nur den Live-Status der Kanäle an.
+    return [bool](Get-Command Get-RecordingStatus -ErrorAction SilentlyContinue)
+}
+
 function New-ChannelState {
     param([Parameter(Mandatory)][string]$Name)
     return @{
@@ -104,6 +110,7 @@ function Invoke-MonitorCycle {
     foreach ($channel in @($State.Channels.Keys)) {
         $cs = $State.Channels[$channel]
         if ($cs.Enabled) { continue }
+        if (-not (Test-RecorderFeature)) { continue }
         # Inaktiver Kanal: keine Abfrage, kein Start. Eine noch laufende Aufnahme wird nicht unterbrochen;
         # hier wird sie nur aufgeräumt (Log, Remux), sobald yt-dlp sich beendet hat.
         try { [void](Get-RecordingStatus -Channel $channel -State $State) }
@@ -150,7 +157,9 @@ function Test-YtDlpAge {
     $age = [int](((Get-Date) - $parsed).TotalDays)
     if ($age -le 30) { return }
     Write-Log -Level WARN -Message "yt-dlp $version ist $age Tage alt - bei Twitch-Problemen bitte aktualisieren (scoop update yt-dlp)."
-    Show-TrayBalloon -State $State -Title 'yt-dlp veraltet' -Text "yt-dlp ist $age Tage alt. Bei Twitch-Problemen: scoop update yt-dlp" -IsError $true
+    if (Get-Command Show-TrayBalloon -ErrorAction SilentlyContinue) {
+        Show-TrayBalloon -State $State -Title 'yt-dlp veraltet' -Text "yt-dlp ist $age Tage alt. Bei Twitch-Problemen: scoop update yt-dlp" -IsError $true
+    }
 }
 
 function Update-MonitorPoll {
@@ -241,6 +250,9 @@ function Update-MonitorPoll {
             # Eine evtl. noch laufende Aufnahme räumt der nächste Zyklus auf (siehe Invoke-MonitorCycle).
             if (-not $cs.Enabled) { continue }
 
+            # Ohne Recorder-Modul nur den Live-Status anzeigen - es gibt nichts zu starten/stoppen.
+            if (-not (Test-RecorderFeature)) { continue }
+
             # Räumt außerdem einen von selbst beendeten yt-dlp-Prozess auf (und setzt ggf. den Neustart-Backoff).
             $recording = Get-RecordingStatus -Channel $channel -State $State
 
@@ -320,14 +332,17 @@ function Start-Monitor {
     $pollTimer.Start()
 
     # Remux-Jobs (ffmpeg läuft im Hintergrund) regelmäßig und billig auf Fertigstellung prüfen.
-    $remuxTimer = New-Object System.Windows.Forms.Timer
-    $remuxTimer.Interval = 5000
-    $remuxTimer.add_Tick({
-        try { Update-RemuxJobs -State $State }
-        catch { Write-Log -Level ERROR -Message "Remux-Timer: $($_.Exception.Message)" }
-    }.GetNewClosure())
-    $State.Timers.Remux = $remuxTimer
-    $remuxTimer.Start()
+    # Nur mit Recorder-Modul - ohne es gibt es keine Remux-Jobs.
+    if (Test-RecorderFeature) {
+        $remuxTimer = New-Object System.Windows.Forms.Timer
+        $remuxTimer.Interval = 5000
+        $remuxTimer.add_Tick({
+            try { Update-RemuxJobs -State $State }
+            catch { Write-Log -Level ERROR -Message "Remux-Timer: $($_.Exception.Message)" }
+        }.GetNewClosure())
+        $State.Timers.Remux = $remuxTimer
+        $remuxTimer.Start()
+    }
 
     # Erster Zyklus erst, wenn der Message-Loop läuft (nicht synchron vor Application.Run()):
     # So ist das Tray sofort bedienbar, auch wenn beim Autostart das Netzwerk noch fehlt.
@@ -380,7 +395,7 @@ function Set-ChannelEnabled {
         Write-Log -Channel $Channel -Level INFO -Message 'Kanal deaktiviert.'
         # Eine laufende Aufnahme wird sauber beendet (Ctrl+C, Remux läuft danach im Hintergrund).
         # Das blockiert bis zur Finalisierung (typisch einige Sekunden, höchstens ca. 45 s).
-        if (Test-ChannelRecording -Channel $Channel -State $State) {
+        if ((Test-RecorderFeature) -and (Test-ChannelRecording -Channel $Channel -State $State)) {
             if (-not (Stop-ChannelRecording -Channel $Channel -State $State)) {
                 Write-Log -Channel $Channel -Level WARN -Message 'Aufnahme konnte nicht vollständig beendet werden; sie läuft weiter und wird aufgeräumt, sobald sie endet.'
             }
@@ -416,7 +431,7 @@ function Stop-Monitor {
     }
     catch { Write-Log -Level ERROR -Message "Stop-Monitor (Timer): $($_.Exception.Message)" }
 
-    if ($StopRecordings) {
+    if ($StopRecordings -and (Test-RecorderFeature)) {
         foreach ($channel in @($State.Channels.Keys)) {
             # Ein Fehler bei einem Kanal darf das Beenden der übrigen nicht verhindern.
             try { Stop-ChannelRecording -Channel $channel -State $State | Out-Null }
@@ -427,7 +442,7 @@ function Stop-Monitor {
     # Laufende Remux-Jobs (auch aus früheren Zyklen) abwarten, sonst bleiben .part/.remux.mp4 liegen.
     try {
         if ($State.Timers.Remux) { $State.Timers.Remux.Stop(); $State.Timers.Remux.Dispose(); $State.Timers.Remux = $null }
-        Wait-RemuxJobs -State $State
+        if (Get-Command Wait-RemuxJobs -ErrorAction SilentlyContinue) { Wait-RemuxJobs -State $State }
     }
     catch { Write-Log -Level ERROR -Message "Stop-Monitor (Remux): $($_.Exception.Message)" }
     [System.Windows.Forms.Application]::Exit()

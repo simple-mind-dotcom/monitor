@@ -151,7 +151,10 @@ function Request-SingleDownload {
 
 function Show-DownloadBalloon {
     param([Parameter(Mandatory)][hashtable]$State, [string]$Title, [string]$Text, [bool]$IsError = $false)
-    Show-TrayBalloon -State $State -Title $Title -Text $Text -IsError $IsError
+    # Tray-Modul ist optional - ohne es nur keine Balloon-Meldung.
+    if (Get-Command Show-TrayBalloon -ErrorAction SilentlyContinue) {
+        Show-TrayBalloon -State $State -Title $Title -Text $Text -IsError $IsError
+    }
 }
 
 function Start-SingleDownload {

@@ -70,6 +70,23 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\twitch_monitor.ps1 -Re
 
 Relative Pfade gelten ab dem Projektordner, `~` wird zum Benutzerprofil aufgelöst.
 
+## Optionale Module
+Die Features der App hängen daran, welche Moduldateien in `modules/` liegen. Fehlt eine Datei,
+fällt das zugehörige Feature einfach weg (beim Start wird protokolliert, was deaktiviert ist) -
+kein Umbau am Code nötig. Nur `Logging.psm1` und `Config.psm1` sind Pflicht.
+
+| Moduldatei | Feature (unterschlagen wenn Datei fehlt) |
+|---|---|
+| `Recorder.psm1` | Aufnahmen starten/stoppen, Remux, Speicherplatzprüfung; ohne es zeigen Monitor/Tray/GUI nur den Live-Status |
+| `Monitor.psm1` | Twitch-Abfrage (Live-Status), Kanalverwaltung, Pausieren/Fortsetzen, "Monitoring beenden" |
+| `Downloader.psm1` | Einzeldownloads (Video/Musik): Tray-Eintrag "Download (Link)...", GUI-Seite Downloads |
+| `Tray.psm1` | Tray-Icon und -Menü (ohne es läuft der Monitor unsichtbar bzw. im NoTray-Modus weiter) |
+| `Startup.psm1` | Autostart (`-InstallAutoStart` / `-RemoveAutoStart`) |
+| `Gui.psm1` | Hauptfenster (Tray-Doppelklick, `-ShowWindow`) |
+
+Beispiele: `Recorder.psm1` löschen -> die App zeigt nur den Live-Status an, startet aber keine Aufnahmen.
+`Tray.psm1` und `Gui.psm1` löschen -> reiner Kopflos-Betrieb (Konsole schließen beendet - Aufnahmen laufen weiter).
+
 ## Bekannte Grenzen
 - Nur unter Windows 11 auf Lauffähigkeit getestet.
 - Mit `--hls-use-mpegts` (twitch.conf) bleibt nach einem Stopp per Ctrl+C eine `.part`-Datei (MPEG-TS) übrig.
