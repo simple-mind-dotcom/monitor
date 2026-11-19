@@ -45,7 +45,10 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\twitch_monitor.ps1 -Re
   mit exponentiellem Backoff (max. 30 min, `Retry-After` wird beachtet), bevor er erneut abfragt.
   Sobald die Verbindung wieder steht, wird normal weitergemacht - ein Eingriff ist nicht nötig.
 - Speicherplatz: Startet keine neue Aufnahme, wenn auf dem Ziel-Laufwerk weniger als `minFreeDiskSpaceGB`
-  (Standard 5) frei sind, und warnt per Benachrichtigung.
+  (Standard 5) frei sind, und warnt per Benachrichtigung. Die GUI zeigt den freien Speicher des
+  Aufnahme-Laufwerks farbcodiert in der Übersicht an (gelb = unter dem doppelten Minimum, rot = unter dem Minimum).
+- yt-dlp: Ist die installierte Version älter als 30 Tage, gibt es beim Start eine Warnung
+  (Twitch-Extraktion bricht bei Änderungen regelmäßig; `scoop update yt-dlp`).
 - yt-dlp: Ist die installierte Version älter als 30 Tage, gibt es beim Start eine Warnung
   (Twitch-Extraktion bricht bei Änderungen regelmäßig; `scoop update yt-dlp`).
 
