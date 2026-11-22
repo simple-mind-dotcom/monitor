@@ -1,83 +1,94 @@
 # Twitch Monitor
 
-PowerShell 5.1, scoop, yt-dlp und FFmpeg. Keine weiteren Abhängigkeiten.
+[![Lint](https://github.com/simple-mind-dotcom/monitor/actions/workflows/lint.yml/badge.svg)](https://github.com/simple-mind-dotcom/monitor/actions/workflows/lint.yml)
 
-## Einrichtung
-1. `configs/config.example.json` nach `configs/config.json` kopieren (die Datei ist absichtlich nicht im Repo).
-2. **Twitch-API-Zugang** (kostenlos): auf https://dev.twitch.tv/console eine Anwendung registrieren
-   (OAuth Redirect URL: `http://localhost`, Kategorie z. B. "Application Integration") und
-   `twitchClientId` / `twitchClientSecret` in `configs/config.json` eintragen.
-3. `configs/config.json` prüfen: `channels`, `pollInterval` (min. 15 Sekunden), `twitchConfigPath`, `outputDirectory`.
-4. `yt-dlp` und `ffmpeg` müssen im PATH liegen (`scoop install yt-dlp ffmpeg`).
+A Windows tray application that watches your favourite Twitch channels and automatically records their
+livestreams with [yt-dlp](https://github.com/yt-dlp/yt-dlp). Also supports one-off video (mp4) and music (mp3)
+downloads by URL. Built with Windows PowerShell 5.1 — no runtime dependencies beyond yt-dlp and FFmpeg.
+
+**Deutsch:** [README.de.md](README.de.md)
+
+## Features
+- **Automatic recording** of configured channels: recording starts shortly after the stream goes live and
+  is stopped and remuxed to `.mp4` when it ends.
+- **Tray icon** with live status per channel (grey = watching, red = recording, orange = paused) and a
+  context menu with full control — live status is even shown for disabled channels.
+- **Modern GUI** (light/dark aware WinForms): channels with live status, downloads, a settings editor
+  (writes `configs/config.json`), yt-dlp config pages and a log viewer.
+- **Single downloads**: video (mp4) or music (mp3) from any URL via tray menu or GUI; running downloads
+  can be cancelled.
+- **Robust Twitch API handling**: token caching, exponential backoff on rate limits (HTTP 429), server
+  errors and network problems (`Retry-After` is honoured) — recovers on its own, no restart needed.
+- **Disk space guard**: no new recordings when free space on the target drive drops below
+  `minFreeDiskSpaceGB`; the GUI shows the remaining space colour-coded.
+- **Clean logging** (`logs/monitor.log`, per-channel logs): only relevant events by default, routine
+  details available with `"logLevel": "DEBUG"`; empty yt-dlp logs of clean runs are removed automatically.
+- **yt-dlp age check**: warns at startup when the installed yt-dlp is older than 30 days.
+- **Single instance** per session and autostart via Windows Task Scheduler.
+
+## Requirements
+- Windows 10/11 (only tested on Windows 11)
+- Windows PowerShell 5.1 (built into Windows)
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp) and FFmpeg on the `PATH`, e.g. via
+  [scoop](https://scoop.sh): `scoop install yt-dlp ffmpeg`
+
+## Setup
+1. Clone or download this repository.
+2. Copy `configs/config.example.json` to `configs/config.json` (the real file is intentionally not in
+   the repository).
+3. Create a free Twitch API application at https://dev.twitch.tv/console
+   (OAuth redirect URL: `http://localhost`, category e.g. "Application Integration") and enter
+   `twitchClientId` / `twitchClientSecret` in `configs/config.json`.
+4. Check `channels`, `pollInterval` (minimum 15 s), `twitchConfigPath` and `outputDirectory` in
+   `configs/config.json`. The yt-dlp configs for recordings and downloads ship as examples in `configs/`.
 
 ## Start
-1. `TwitchMonitor_starten.vbs` ausführen. Bei Bedarf einfach einen Shortcut erstellen.
-2. Per powershell Befehl:
+Run `TwitchMonitor_starten.vbs` (create a shortcut if you like), or start it manually:
+
 ```
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\twitch_monitor.ps1
 ```
 
+The app lives in the system tray; double-click the icon (or use `-ShowWindow`) to open the main window.
+
 ## Autostart (Task Scheduler)
-Autostart hinzufügen:
+Register autostart for the current user:
 ```
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\twitch_monitor.ps1 -InstallAutoStart
 ```
-Autostart entfernen:
+Remove it again:
 ```
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\twitch_monitor.ps1 -RemoveAutoStart
 ```
 
-## Verhalten
-- GUI: Per Doppelklick aufs Tray-Icon oder dessen Kontextmenu öffnen. Seiten: Übersicht (Kanäle/Aufnahmen),
-  Downloads, Einstellungen (speichert `configs/config.json`, Sicherung: `.bak`), yt-dlp-Configs, Log.
-- Einzeldownloads: Per Tray-Menü („Download (Link)…") oder GUI-Seite Downloads — Video (mp4) oder Musik (mp3).
-  Die yt-dlp-Configs dafür liegen in `configs/download_video.conf` / `configs/download_music.conf`;
-  laufende Downloads lassen sich in der GUI abbrechen.
-- Tray-Icon: grau = überwacht, rot = Aufnahme läuft, orange = pausiert. Rechtsklick zeigt Status je Kanal
-  (live/Aufnahme zuerst; auch deaktivierte Kanäle werden mit abgefragt und zeigen ihren Live-Status).
-- Optionen: erweiterte Optionen in GUI verfügbar.
-- Logs in `logs\`: `monitor.log`, `<kanal>.log`, sowie die yt-dlp-Ausgabe `<kanal>.ytdlp.out.log` / `.err.log`
-  (ffmpeg-Logausgabe ist auf Warnungen/Fehler reduziert, damit die err.log klein bleibt).
-  Der Log umfasst nur relevante Ereignisse (Start/Stop der Aufnahme, WARN/ERROR); Routine-Details stehen
-  mit `"logLevel": "DEBUG"` in `configs/config.json` zusätzlich zur Verfügung. Leere yt-dlp-Logs sauber gelaufener
-  Aufnahmen werden automatisch gelöscht.
-- Twitch-API: Bei Rate-Limit (HTTP 429), Serverfehlern oder Netzwerkproblemen (z. B. DNS) wartet der Monitor
-  mit exponentiellem Backoff (max. 30 min, `Retry-After` wird beachtet), bevor er erneut abfragt.
-  Sobald die Verbindung wieder steht, wird normal weitergemacht - ein Eingriff ist nicht nötig.
-- Speicherplatz: Startet keine neue Aufnahme, wenn auf dem Ziel-Laufwerk weniger als `minFreeDiskSpaceGB`
-  (Standard 5) frei sind, und warnt per Benachrichtigung. Die GUI zeigt den freien Speicher des
-  Aufnahme-Laufwerks farbcodiert in der Übersicht an (gelb = unter dem doppelten Minimum, rot = unter dem Minimum).
-- yt-dlp: Ist die installierte Version älter als 30 Tage, gibt es beim Start eine Warnung
-  (Twitch-Extraktion bricht bei Änderungen regelmäßig; `scoop update yt-dlp`).
-- yt-dlp: Ist die installierte Version älter als 30 Tage, gibt es beim Start eine Warnung
-  (Twitch-Extraktion bricht bei Änderungen regelmäßig; `scoop update yt-dlp`).
+## Configuration (`configs/config.json`)
 
-## Konfiguration (`configs/config.json`)
-
-| Schlüssel | Bedeutung | Standard |
+| Key | Meaning | Default |
 |---|---|---|
-| `channels` | Twitch-Kanalnamen (a–z, 0–9, `_`), ein Eintrag pro Kanal | – |
-| `pollInterval` | Abfrageintervall in Sekunden (15–3600) | 60 |
-| `twitchConfigPath` | yt-dlp-Config für Aufnahmen | `~/scoop/apps/yt-dlp/twitch.conf` |
-| `outputDirectory` | Ordner für Aufnahmen (je Kanal ein Unterordner) | `~/Videos/twitch` |
-| `ytDlpPath` | Pfad oder Befehlsname von yt-dlp | `yt-dlp` |
-| `ffmpegPath` | Pfad oder Befehlsname von ffmpeg (Remux, mp3-Konvertierung) | `ffmpeg` |
-| `twitchClientId` / `twitchClientSecret` | Twitch-API-Zugang (https://dev.twitch.tv/console) | – |
-| `minFreeDiskSpaceGB` | Freier Speicherplatz, unter dem keine neuen Aufnahmen starten (0 = Check aus) | 5 |
-| `logLevel` | `INFO` (relevante Ereignisse) oder `DEBUG` (zusätzlich Routine-Details) | `INFO` |
-| `downloads.videoConfigPath` / `musicConfigPath` | yt-dlp-Configs für Einzeldownloads | `configs/download_*.conf` |
-| `downloads.videoDirectory` / `musicDirectory` | Zielordner für Einzeldownloads | `~/Videos/downloads` bzw. `~/Music/downloads` |
+| `channels` | Twitch channel names (a–z, 0–9, `_`), one entry per channel | – |
+| `pollInterval` | Polling interval in seconds (15–3600) | 60 |
+| `twitchConfigPath` | yt-dlp config used for recordings | `~/scoop/apps/yt-dlp/twitch.conf` |
+| `outputDirectory` | Folder for recordings (one subfolder per channel) | `~/Videos/twitch` |
+| `ytDlpPath` | Path or command name of yt-dlp | `yt-dlp` |
+| `ffmpegPath` | Path or command name of ffmpeg (remux, mp3 conversion) | `ffmpeg` |
+| `twitchClientId` / `twitchClientSecret` | Twitch API access (https://dev.twitch.tv/console) | – |
+| `minFreeDiskSpaceGB` | Minimum free disk space for starting new recordings (0 = check off) | 5 |
+| `logLevel` | `INFO` (relevant events only) or `DEBUG` (adds routine details) | `INFO` |
+| `downloads.videoConfigPath` / `musicConfigPath` | yt-dlp configs for single downloads | `configs/download_*.conf` |
+| `downloads.videoDirectory` / `musicDirectory` | Target folders for single downloads | `~/Videos/downloads` resp. `~/Music/downloads` |
 
-Relative Pfade gelten ab dem Projektordner, `~` wird zum Benutzerprofil aufgelöst.
+Relative paths are resolved from the project folder, `~` points to the user profile.
 
-## Bekannte Grenzen
-- Nur unter Windows 11 auf Lauffähigkeit getestet.
-- Mit `--hls-use-mpegts` (twitch.conf) bleibt nach einem Stopp per Ctrl+C eine `.part`-Datei (MPEG-TS) übrig.
-  Das Monitor-Skript remuxt sie danach per `ffmpeg -c copy` zu `.mp4` (optional `ffmpegPath` in `configs/config.json`).
-  Eingebettete Metadaten/Thumbnail fehlen bei solchen Dateien; endet der Stream normal, erledigt yt-dlp alles selbst.
-- `--cookies-from-browser firefox` (twitch.conf) kann scheitern, während Firefox läuft oder das Profil gesperrt ist.
-  In dem Fall yt-dlp-Fehlermeldung in `<kanal>.ytdlp.err.log` prüfen.
+## Known limitations
+- With `--hls-use-mpegts` (twitch.conf), stopping via Ctrl+C leaves a `.part` file (MPEG-TS). The monitor
+  then remuxes it with `ffmpeg -c copy` to `.mp4` (see `ffmpegPath` in `configs/config.json`). Such files
+  lack embedded metadata/thumbnails; if the stream ends normally, yt-dlp handles everything itself.
+- `--cookies-from-browser firefox` (twitch.conf) can fail while Firefox is running or the profile is
+  locked. In that case check the yt-dlp error in `<channel>.ytdlp.err.log`.
 
-## Entwicklung & Tests
-- Pester-Tests (reine Hilfsfunktionen): `Invoke-Pester -Path ./tests`
-- CI (GitHub Actions): PSScriptAnalyzer + Pester bei jedem Push/PR
+## Development & tests
+- Pester tests (pure helper functions): `Invoke-Pester -Path ./tests`
+- CI (GitHub Actions): PSScriptAnalyzer + Pester on every push/PR
+
+## License
+[MIT](LICENSE) — © 2026 simple-mind-dotcom
