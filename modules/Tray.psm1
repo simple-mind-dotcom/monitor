@@ -257,6 +257,39 @@ function Update-Tray {
 			$dlInfo = $menu.Items.Add("   $($script:Sym.Disk) $dlCount Download(s) laufen")
 			$dlInfo.Enabled = $false
 		}
+
+        # Wiedergabe per streamlink: je Kanal ein Eintrag mit Qualitätsauswahl, laufende Wiedergabe stoppbar.
+        if (Get-Command Request-StreamPlayback -ErrorAction SilentlyContinue) {
+            $playRoot = New-Object System.Windows.Forms.ToolStripMenuItem -ArgumentList "$($script:Sym.Play) Wiedergabe (streamlink)"
+            foreach ($channel in @($State.Channels.Keys | Sort-Object)) {
+                $job = $null
+                if (Get-Command Get-PlaybackForChannel -ErrorAction SilentlyContinue) { $job = Get-PlaybackForChannel -State $State -Channel $channel }
+                $label = if ($job) { "$channel - läuft" } else { $channel }
+                $entry = New-Object System.Windows.Forms.ToolStripMenuItem -ArgumentList ($label -replace '&', '&&')
+                foreach ($q in (Get-PlaybackQualities)) {
+                    $qualityLabel = "  $($q.Label)"
+                    $qName = [string]$q.Value
+                    # GetNewClosure: $channel und $qName bleiben pro Eintrag erhalten.
+                    $subEntry = New-Object System.Windows.Forms.ToolStripMenuItem -ArgumentList $qualityLabel
+                    $subEntry.add_Click({
+                        try { Request-StreamPlayback -State $State -Channel $channel -Quality $qName }
+                        catch { Write-Log -Channel 'playback' -Level ERROR -Message "Tray (Wiedergabe): $($_.Exception.Message)" }
+                    }.GetNewClosure())
+                    [void]$entry.DropDownItems.Add($subEntry)
+                }
+                if ($job) {
+                    $stopEntry = New-Object System.Windows.Forms.ToolStripMenuItem -ArgumentList "$($script:Sym.Stop) Wiedergabe stoppen"
+                    $stopEntry.add_Click({
+                        try { Stop-StreamPlayback -State $State -Id $job.Id }
+                        catch { Write-Log -Channel 'playback' -Level ERROR -Message "Tray (Wiedergabe stoppen): $($_.Exception.Message)" }
+                    }.GetNewClosure())
+                    [void]$entry.DropDownItems.Add($stopEntry)
+                }
+                [void]$playRoot.DropDownItems.Add($entry)
+            }
+            [void]$menu.Items.Add($playRoot)
+        }
+
         [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
 
         $stop = $menu.Items.Add("$($script:Sym.Stop) Monitoring beenden")

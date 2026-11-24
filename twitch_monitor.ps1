@@ -20,7 +20,7 @@ try { [System.Windows.Forms.Application]::SetUnhandledExceptionMode([System.Wind
 
 # -Global: Module rufen sich gegenseitig auf (z. B. Monitor -> Recorder), das braucht globale Sichtbarkeit.
 # Gui ist optional: fehlt modules\Gui.psm1, läuft alles wie vorher (ohne Fenster).
-$moduleNames = @('Logging', 'Config', 'Recorder', 'Downloader', 'Monitor', 'Tray', 'Startup')
+$moduleNames = @('Logging', 'Config', 'Recorder', 'Downloader', 'Player', 'Monitor', 'Tray', 'Startup')
 if (Test-Path -LiteralPath (Join-Path $script:ProjectRoot 'modules\Gui.psm1')) { $moduleNames += 'Gui' }
 foreach ($name in $moduleNames) {
     Import-Module (Join-Path $script:ProjectRoot "modules\$name.psm1") -Force -Global -DisableNameChecking -ErrorAction Stop
@@ -68,10 +68,11 @@ $script:AppState = @{
     IsStopping      = $false
     Config          = $null
     Channels        = @{}
-    Timers          = @{ Monitor = $null; Tray = $null; Remux = $null; Download = $null }
+    Timers          = @{ Monitor = $null; Tray = $null; Remux = $null; Download = $null; Playback = $null }
     RemuxJobs       = New-Object System.Collections.ArrayList
     DownloadJobs    = New-Object System.Collections.ArrayList
     DownloadHistory = New-Object System.Collections.ArrayList
+    PlaybackJobs    = New-Object System.Collections.ArrayList
     StoppingPollJobs = New-Object System.Collections.ArrayList
     ApiBackoffUntil = $null
     ApiBackoffFails = 0
@@ -108,6 +109,9 @@ try {
 
     # Einzeldownloads (unabhängig vom Monitoring, funktioniert auch bei Konfigurationsfehlern).
     Initialize-Downloader -State $script:AppState
+
+    # Wiedergabe per streamlink (Kontextmenü Tray/GUI).
+    Initialize-Player -State $script:AppState
 
     Start-Monitor -State $script:AppState
 
