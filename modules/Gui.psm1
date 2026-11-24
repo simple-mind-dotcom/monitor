@@ -329,6 +329,20 @@ function Add-GuiField {
         $ctl.BorderStyle = 'FixedSingle'
         $ctl.SetBounds(220, $Y, 110, 26)
     }
+    elseif ($Kind -eq 'disk') {
+        $ctl = New-Object System.Windows.Forms.NumericUpDown
+        $ctl.Minimum = 0; $ctl.Maximum = 1000; $ctl.DecimalPlaces = 1; $ctl.Increment = 1
+        $ctl.BorderStyle = 'FixedSingle'
+        $ctl.SetBounds(220, $Y, 110, 26)
+    }
+    elseif ($Kind -eq 'loglevel') {
+        $ctl = New-Object System.Windows.Forms.ComboBox
+        $ctl.DropDownStyle = 'DropDownList'
+        $ctl.FlatStyle = 'Flat'
+        [void]$ctl.Items.AddRange(@('INFO', 'DEBUG'))
+        $ctl.SelectedIndex = 0
+        $ctl.SetBounds(220, $Y, 110, 26)
+    }
     elseif ($Kind -eq 'channels') {
         $ctl = New-Object System.Windows.Forms.TextBox
         $ctl.Multiline = $true; $ctl.AcceptsReturn = $true; $ctl.ScrollBars = 'Vertical'
@@ -396,6 +410,10 @@ function Import-GuiFields {
     $f.channels.Text = (@($raw.channels) -join [Environment]::NewLine)
     $poll = if ($raw.pollInterval) { [int]$raw.pollInterval } else { 60 }
     $f.pollInterval.Value = [Math]::Min(3600, [Math]::Max(15, $poll))
+    $minGB = 5
+    try { if ($null -ne $raw.minFreeDiskSpaceGB) { $minGB = [double]$raw.minFreeDiskSpaceGB } } catch { $minGB = 5 }
+    $f.minFreeDiskSpaceGB.Value = [Math]::Min(1000, [Math]::Max(0, [decimal]$minGB))
+    $f.logLevel.SelectedIndex = if ((Get-NormalizedLogLevel -Level ([string]$raw.logLevel)) -eq 'DEBUG') { 1 } else { 0 }
     $f.outputDirectory.Text = [string]$raw.outputDirectory
     $f.ytDlpPath.Text = [string]$raw.ytDlpPath
     $f.ffmpegPath.Text = if ($raw.ffmpegPath) { [string]$raw.ffmpegPath } else { 'ffmpeg' }
@@ -478,6 +496,8 @@ function Save-GuiSettings {
 
     Set-GuiProp $raw 'channels' @($channels)
     Set-GuiProp $raw 'pollInterval' ([int]$f.pollInterval.Value)
+    Set-GuiProp $raw 'minFreeDiskSpaceGB' ([double]$f.minFreeDiskSpaceGB.Value)
+    Set-GuiProp $raw 'logLevel' (Get-NormalizedLogLevel -Level $f.logLevel.Text)
     Set-GuiProp $raw 'twitchConfigPath' $f.twitchConfigPath.Text.Trim()
     Set-GuiProp $raw 'outputDirectory' $f.outputDirectory.Text.Trim()
     Set-GuiProp $raw 'ytDlpPath' $f.ytDlpPath.Text.Trim()
@@ -956,6 +976,7 @@ function New-GuiSettingsPage {
     $y = Add-GuiSection -Parent $panel -Text 'ÜBERWACHUNG' -Y $y
     $y = Add-GuiField -Parent $panel -Fields $f -Key 'channels' -Label 'Kanäle (einer pro Zeile)' -Y $y -Kind 'channels'
     $y = Add-GuiField -Parent $panel -Fields $f -Key 'pollInterval' -Label 'Abfrageintervall (s)' -Y $y -Kind 'number'
+    $y = Add-GuiField -Parent $panel -Fields $f -Key 'minFreeDiskSpaceGB' -Label 'Mindestens freier Speicher (GB)' -Y $y -Kind 'disk'
     $y += 10
     $y = Add-GuiSection -Parent $panel -Text 'ORDNER && PROGRAMME' -Y $y
     $y = Add-GuiField -Parent $panel -Fields $f -Key 'outputDirectory' -Label 'Aufnahme-Ordner' -Y $y -Kind 'folder'
@@ -972,6 +993,9 @@ function New-GuiSettingsPage {
     $y = Add-GuiField -Parent $panel -Fields $f -Key 'musicDirectory' -Label 'Musik-Ordner' -Y $y -Kind 'folder'
     $y = Add-GuiField -Parent $panel -Fields $f -Key 'videoConfigPath' -Label 'Video-Config' -Y $y -Kind 'file'
     $y = Add-GuiField -Parent $panel -Fields $f -Key 'musicConfigPath' -Label 'Musik-Config' -Y $y -Kind 'file'
+    $y += 10
+    $y = Add-GuiSection -Parent $panel -Text 'LOGGING' -Y $y
+    $y = Add-GuiField -Parent $panel -Fields $f -Key 'logLevel' -Label 'Log-Level (INFO/DEBUG)' -Y $y -Kind 'loglevel'
 
     $bar = New-GuiBar
     $save = New-GuiButton -Text 'Speichern && übernehmen' -Width 190 -Style primary

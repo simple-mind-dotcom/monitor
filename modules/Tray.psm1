@@ -235,6 +235,15 @@ function Update-Tray {
 
         [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
 
+        # yt-dlp über scoop aktualisieren (Twitch ändert oft; yt-dlp muss aktuell bleiben).
+        if (Get-Command Start-YtDlpUpdate -ErrorAction SilentlyContinue) {
+            $upd = $menu.Items.Add("$($script:Sym.Down) yt-dlp aktualisieren")
+            $upd.add_Click({
+                try { Start-YtDlpUpdate -State $State | Out-Null }
+                catch { Write-Log -Level ERROR -Message "Tray (yt-dlp aktualisieren): $($_.Exception.Message)" }
+            }.GetNewClosure())
+        }
+
         $stop = $menu.Items.Add("$($script:Sym.Stop) Monitoring beenden")
         $stop.add_Click({
             try { Stop-Monitor -State $State -StopRecordings $true }
