@@ -820,48 +820,6 @@ function New-GuiOverviewPage {
         }
     }.GetNewClosure())
 
-    # Kontextmenü auf der Kanalliste: Wiedergabe per streamlink (mit Qualitätsauswahl) und Stopp.
-    if (Get-Command Request-StreamPlayback -ErrorAction SilentlyContinue) {
-        $ctx = New-Object System.Windows.Forms.ContextMenuStrip
-        $ctx.add_Opening({
-            param($s, $e)
-            try {
-                # Menü frisch aufbauen (auch disposed alte Einträge, siehe Tray).
-                $old = @($s.Items)
-                $s.Items.Clear()
-                foreach ($o in $old) { $o.Dispose() }
-                $hit = $lv.HitTest($lv.PointToClient([System.Windows.Forms.Cursor]::Position))
-                if (-not $hit.Item) { $e.Cancel = $true; return }
-                $hit.Item.Selected = $true
-                $channel = [string]$hit.Item.Name
-                $play = New-Object System.Windows.Forms.ToolStripMenuItem -ArgumentList "Abspielen ($channel):"
-                $play.Enabled = $false
-                foreach ($q in (Get-PlaybackQualities)) {
-                    $qName = [string]$q.Value
-                    $qualityEntry = New-Object System.Windows.Forms.ToolStripMenuItem -ArgumentList [string]$q.Label
-                    # GetNewClosure: $channel und $qName bleiben pro Eintrag erhalten.
-                    $qualityEntry.add_Click({
-                        try { Request-StreamPlayback -State $State -Channel $channel -Quality $qName }
-                        catch { Write-Log -Channel 'playback' -Level ERROR -Message "GUI (Wiedergabe): $($_.Exception.Message)" }
-                    }.GetNewClosure())
-                    [void]$play.DropDownItems.Add($qualityEntry)
-                }
-                [void]$s.Items.Add($play)
-                [void]$s.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
-                $job = Get-PlaybackForChannel -State $State -Channel $channel
-                if ($job) {
-                    $stopEntry = $s.Items.Add('Wiedergabe stoppen')
-                    $stopEntry.add_Click({
-                        try { Stop-StreamPlayback -State $State -Id $job.Id }
-                        catch { Write-Log -Channel 'playback' -Level ERROR -Message "GUI (Wiedergabe stoppen): $($_.Exception.Message)" }
-                    }.GetNewClosure())
-                }
-            }
-            catch { $e.Cancel = $true }
-        }.GetNewClosure())
-        $lv.ContextMenuStrip = $ctx
-    }
-
     $bar = New-GuiBar
     $pause = New-GuiButton -Text 'Pausieren' -Width 110
     $check = New-GuiButton -Text 'Jetzt prüfen' -Width 110
