@@ -146,148 +146,91 @@ function Update-Tray {
                 $cs = $State.Channels[$channel]
                 $unknown = Test-ChannelStatusUnknown -State $State -ChannelState $cs
                 $suffix = if ($unknown) { " ($($script:Sym.Warn) Status unbekannt)" } else { '' }
+                $recording = Test-ChannelRecording -Channel $channel -State $State
+
+                # Dauer/Größe einer laufenden Aufnahme (wird im Aufklappmenü des Kanals gezeigt).
+                $detailText = ''
+                if ($recording -and $cs.StartedAt) {
+                    $span = (Get-Date) - $cs.StartedAt
+                    $duration = '{0:00}:{1:mm\:ss}' -f [int][Math]::Floor($span.TotalHours), $span
+                    $size = Format-Size -Bytes (Get-RecordingSize -Channel $channel -State $State)
+                    $detailText = "   $($script:Sym.Timer) $duration  $($script:Sym.Disk) $size"
+                }
+
+                $title = [string]$cs.Title
+                if ($title.Length -gt 30) { $title = $title.Substring(0, 30) }
+                $title = $title -replace '&', '&&'
 
                 if (-not $cs.Enabled) {
-                    if (Test-ChannelRecording -Channel $channel -State $State) {
-                        $item = $menu.Items.Add("$($script:Sym.Live) $channel (inaktiv $($script:Sym.Dash) Aufnahme läuft)")
-                        $item.Enabled = $false
-                        if ($cs.StartedAt) {
-                            $span = (Get-Date) - $cs.StartedAt
-                            $duration = '{0:00}:{1:mm\:ss}' -f [int][Math]::Floor($span.TotalHours), $span
-                        }
-                        else { $duration = '--:--:--' }
-                        $size = Format-Size -Bytes (Get-RecordingSize -Channel $channel -State $State)
-                        $detail = $menu.Items.Add("   $($script:Sym.Timer) $duration  $($script:Sym.Disk) $size")
-                        $detail.Enabled = $false
+                    if ($recording) {
+                        $label = "$($script:Sym.Live) $channel (inaktiv $($script:Sym.Dash) Aufnahme läuft)"
                     }
                     elseif ($cs.IsLive) {
-                        $title = [string]$cs.Title
-                        if ($title.Length -gt 30) { $title = $title.Substring(0, 30) }
-                        $title = $title -replace '&', '&&'
                         $label = if ($title) { "$($script:Sym.Live) $channel $($script:Sym.Dash) $title (inaktiv $($script:Sym.Dash) live)" }
-                        else { "$($script:Sym.Live) $channel (inaktiv $($script:Sym.Dash) live)" }
-                        $item = $menu.Items.Add($label)
-                        $item.Enabled = $false
+                                 else { "$($script:Sym.Live) $channel (inaktiv $($script:Sym.Dash) live)" }
                     }
-                    elseif ($unknown) {
-                        $item = $menu.Items.Add("$($script:Sym.Warn) $channel (inaktiv - Status unbekannt)")
-                        $item.Enabled = $false
-                    }
-                    else {
-                        $item = $menu.Items.Add("$($script:Sym.Pause) $channel (inaktiv)")
-                        $item.Enabled = $false
-                    }
+                    elseif ($unknown) { $label = "$($script:Sym.Warn) $channel (inaktiv - Status unbekannt)" }
+                    else { $label = "$($script:Sym.Pause) $channel (inaktiv)" }
                 }
-                elseif ($cs.IsLive) {
-                    $title = [string]$cs.Title
-                    if ($title.Length -gt 30) { $title = $title.Substring(0, 30) }
-                    $title = $title -replace '&', '&&'
-                    $item = $menu.Items.Add("$($script:Sym.Live) $channel $($script:Sym.Dash) $title$suffix")
-                    $item.Enabled = $false
+                elseif ($cs.IsLive) { $label = "$($script:Sym.Live) $channel $($script:Sym.Dash) $title$suffix" }
+                elseif ($unknown) { $label = "$($script:Sym.Warn) $channel (Status unbekannt)" }
+                else { $label = "$($script:Sym.Off) $channel (offline)" }
 
-                    if ($cs.StartedAt) {
-                        $span = (Get-Date) - $cs.StartedAt
-                        $duration = '{0:00}:{1:mm\:ss}' -f [int][Math]::Floor($span.TotalHours), $span
-                    }
-                    else { $duration = '--:--:--' }
-                    $size = Format-Size -Bytes (Get-RecordingSize -Channel $channel -State $State)
-                    $detail = $menu.Items.Add("   $($script:Sym.Timer) $duration  $($script:Sym.Disk) $size")
-                    $detail.Enabled = $false
-                }
-                elseif ($unknown) {
-                    $item = $menu.Items.Add("$($script:Sym.Warn) $channel (Status unbekannt)")
-                    $item.Enabled = $false
-                }
-                else {
-                    $item = $menu.Items.Add("$($script:Sym.Off) $channel (offline)")
-                    $item.Enabled = $false
-                }
-            }
+                # Steuerung direkt am Kanal: der Eintrag lässt sich aufklappen und enthält
+                # den Überwachen-Schalter sowie die Wiedergabe-Auswahl (statt separater Sammel-Menüs).
+                $entry = New-Object System.Windows.Forms.ToolStripMenuItem -ArgumentList ($label -replace '&', '&&')
 
-            # Untermenü: einzelne Kanäle aktiv (Haken) oder inaktiv schalten.
-            $sub = New-Object System.Windows.Forms.ToolStripMenuItem -ArgumentList 'Aktive Kanäle:'
-            foreach ($channel in @($State.Channels.Keys | Sort-Object)) {
-                $label = $channel -replace '&', '&&'
-                if ($State.Channels[$channel].IsLive) { $label = "$label  $($script:Sym.Live)" }
-                $entry = New-Object System.Windows.Forms.ToolStripMenuItem -ArgumentList $label
-                $entry.Checked = [bool]$State.Channels[$channel].Enabled
-                # GetNewClosure: $channel und $State müssen im Handler pro Eintrag erhalten bleiben.
-                $entry.add_Click({
+                $job = $null
+                if (Get-Command Get-PlaybackForChannel -ErrorAction SilentlyContinue) { $job = Get-PlaybackForChannel -State $State -Channel $channel }
+                if ($job) {
+                    $playInfo = New-Object System.Windows.Forms.ToolStripMenuItem -ArgumentList "$($script:Sym.Play) Wiedergabe läuft ($([string]$job.Quality))"
+                    $playInfo.Enabled = $false
+                    [void]$entry.DropDownItems.Add($playInfo)
+                }
+                if ($detailText) {
+                    $detailInfo = New-Object System.Windows.Forms.ToolStripMenuItem -ArgumentList ($detailText -replace '&', '&&')
+                    $detailInfo.Enabled = $false
+                    [void]$entry.DropDownItems.Add($detailInfo)
+                }
+                $monItem = New-Object System.Windows.Forms.ToolStripMenuItem -ArgumentList "Überwachen"
+                $monItem.Checked = [bool]$cs.Enabled
+                # GetNewClosure: $channel und $State bleiben pro Eintrag erhalten.
+                $monItem.add_Click({
                     try {
                         Set-ChannelEnabled -State $State -Channel $channel -Enabled (-not [bool]$State.Channels[$channel].Enabled)
                         Update-Tray -State $State
                     }
                     catch { Write-Log -Level ERROR -Message "Tray (Kanal umschalten): $($_.Exception.Message)" }
                 }.GetNewClosure())
-                [void]$sub.DropDownItems.Add($entry)
-            }
-            [void]$menu.Items.Add($sub)
-        }
+                [void]$entry.DropDownItems.Add($monItem)
 
-        [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
-
-        if (-not $State.ConfigError) {
-            $toggleText = if ($State.IsPaused) { "$($script:Sym.Play) Fortsetzen" } else { "$($script:Sym.Pause) Pausieren" }
-            $toggle = $menu.Items.Add($toggleText)
-            $toggle.add_Click({
-                try {
-                    if ($State.IsPaused) { Resume-Monitor -State $State } else { Pause-Monitor -State $State }
-                    Update-Tray -State $State
+                # Wiedergabe-Auswahl direkt am Kanal (nur mit Player-/streamlink-Modul).
+                if (Get-Command Request-StreamPlayback -ErrorAction SilentlyContinue) {
+                    [void]$entry.DropDownItems.Add((New-Object System.Windows.Forms.ToolStripSeparator))
+                    $playHeader = New-Object System.Windows.Forms.ToolStripMenuItem -ArgumentList "$($script:Sym.Play) Anschauen (streamlink):"
+                    $playHeader.Enabled = $false
+                    [void]$entry.DropDownItems.Add($playHeader)
+                    foreach ($q in (Get-PlaybackQualities)) {
+                        $qName = [string]$q.Value
+                        $subEntry = New-Object System.Windows.Forms.ToolStripMenuItem -ArgumentList "  $($q.Label)"
+                        $subEntry.add_Click({
+                            try { Request-StreamPlayback -State $State -Channel $channel -Quality $qName }
+                            catch { Write-Log -Channel 'playback' -Level ERROR -Message "Tray (Wiedergabe): $($_.Exception.Message)" }
+                        }.GetNewClosure())
+                        [void]$entry.DropDownItems.Add($subEntry)
+                    }
+                    if ($job) {
+                        $stopEntry = New-Object System.Windows.Forms.ToolStripMenuItem -ArgumentList "$($script:Sym.Stop) Wiedergabe stoppen"
+                        $stopEntry.add_Click({
+                            try { Stop-StreamPlayback -State $State -Id $job.Id }
+                            catch { Write-Log -Channel 'playback' -Level ERROR -Message "Tray (Wiedergabe stoppen): $($_.Exception.Message)" }
+                        }.GetNewClosure())
+                        [void]$entry.DropDownItems.Add($stopEntry)
+                    }
                 }
-                catch { Write-Log -Level ERROR -Message "Tray (Pause/Fortsetzen): $($_.Exception.Message)" }
-            }.GetNewClosure())
-        }
 
-        $openFolder = $menu.Items.Add("$($script:Sym.Folder) Download-Ordner öffnen")
-        $openFolder.add_Click({
-            try {
-                $dir = [string]$State.Config.OutputDirectory
-                if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force -ErrorAction Stop | Out-Null }
-                Invoke-Item -LiteralPath $dir
+                [void]$menu.Items.Add($entry)
             }
-            catch { Write-Log -Level ERROR -Message "Tray (Ordner öffnen): $($_.Exception.Message)" }
-        }.GetNewClosure())
-		$dl = $menu.Items.Add("$($script:Sym.Down) Download (Link)...")
-		$dl.add_Click({
-			try { Request-SingleDownload -State $State }
-			catch { Write-Log -Level ERROR -Message "Tray (Download): $($_.Exception.Message)" }
-		}.GetNewClosure())
-		$dlCount = Get-ActiveDownloadCount -State $State
-		if ($dlCount -gt 0) {
-			$dlInfo = $menu.Items.Add("   $($script:Sym.Disk) $dlCount Download(s) laufen")
-			$dlInfo.Enabled = $false
-		}
-
-        # Wiedergabe per streamlink: je Kanal ein Eintrag mit Qualitätsauswahl, laufende Wiedergabe stoppbar.
-        if (Get-Command Request-StreamPlayback -ErrorAction SilentlyContinue) {
-            $playRoot = New-Object System.Windows.Forms.ToolStripMenuItem -ArgumentList "$($script:Sym.Play) Wiedergabe (streamlink)"
-            foreach ($channel in @($State.Channels.Keys | Sort-Object)) {
-                $job = $null
-                if (Get-Command Get-PlaybackForChannel -ErrorAction SilentlyContinue) { $job = Get-PlaybackForChannel -State $State -Channel $channel }
-                $label = if ($job) { "$channel - läuft" } else { $channel }
-                $entry = New-Object System.Windows.Forms.ToolStripMenuItem -ArgumentList ($label -replace '&', '&&')
-                foreach ($q in (Get-PlaybackQualities)) {
-                    $qualityLabel = "  $($q.Label)"
-                    $qName = [string]$q.Value
-                    # GetNewClosure: $channel und $qName bleiben pro Eintrag erhalten.
-                    $subEntry = New-Object System.Windows.Forms.ToolStripMenuItem -ArgumentList $qualityLabel
-                    $subEntry.add_Click({
-                        try { Request-StreamPlayback -State $State -Channel $channel -Quality $qName }
-                        catch { Write-Log -Channel 'playback' -Level ERROR -Message "Tray (Wiedergabe): $($_.Exception.Message)" }
-                    }.GetNewClosure())
-                    [void]$entry.DropDownItems.Add($subEntry)
-                }
-                if ($job) {
-                    $stopEntry = New-Object System.Windows.Forms.ToolStripMenuItem -ArgumentList "$($script:Sym.Stop) Wiedergabe stoppen"
-                    $stopEntry.add_Click({
-                        try { Stop-StreamPlayback -State $State -Id $job.Id }
-                        catch { Write-Log -Channel 'playback' -Level ERROR -Message "Tray (Wiedergabe stoppen): $($_.Exception.Message)" }
-                    }.GetNewClosure())
-                    [void]$entry.DropDownItems.Add($stopEntry)
-                }
-                [void]$playRoot.DropDownItems.Add($entry)
-            }
-            [void]$menu.Items.Add($playRoot)
         }
 
         [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))

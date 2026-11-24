@@ -12,14 +12,16 @@ downloads by URL. Built with Windows PowerShell 5.1 — no runtime dependencies 
 - **Automatic recording** of configured channels: recording starts shortly after the stream goes live and
   is stopped and remuxed to `.mp4` when it ends.
 - **Tray icon** with live status per channel (grey = watching, red = recording, orange = paused) and a
-  context menu with full control — live status is even shown for disabled channels.
+  context menu with full control — live status is even shown for disabled channels. Each channel entry
+  expands directly to its controls: a "Überwachen" toggle (start/stop monitoring) and
+  "Anschauen" (open the live stream in your player).
 - **Modern GUI** (light/dark aware WinForms): channels with live status, downloads, a settings editor
   (writes `configs/config.json`), yt-dlp config pages and a log viewer.
 - **Single downloads**: video (mp4) or music (mp3) from any URL via tray menu or GUI; running downloads
   can be cancelled.
 - **Stream playback** via [streamlink](https://streamlink.github.io/) without recording: right-click a
-  channel in the GUI list or use the tray "Wiedergabe" menu to open a live stream in your player — with
-  quality selection (best, 1080p60, …, worst, audio only).
+  channel in the GUI list or expand a channel in the tray menu and pick "Anschauen" to open the live
+  stream in your player — with quality selection (best, 1080p60, …, worst, audio only).
 - **Robust Twitch API handling**: token caching, exponential backoff on rate limits (HTTP 429), server
   errors and network problems (`Retry-After` is honoured) — recovers on its own, no restart needed.
 - **Disk space guard**: no new recordings when free space on the target drive drops below

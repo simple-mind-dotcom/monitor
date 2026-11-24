@@ -13,14 +13,16 @@ yt-dlp und FFmpeg.
 - **Automatische Aufnahmen** der konfigurierten Kanäle: Die Aufnahme startet kurz nachdem der Stream live
   geht und wird beim Ende gestoppt und zu `.mp4` remuxt.
 - **Tray-Icon** mit Live-Status je Kanal (grau = überwacht, rot = Aufnahme läuft, orange = pausiert) und
-  Kontextmenü mit allen Steuerungen — der Live-Status wird auch für deaktivierte Kanäle angezeigt.
+  Kontextmenü mit allen Steuerungen — der Live-Status wird auch für deaktivierte Kanäle angezeigt. Jeder
+  Kanal-Eintrag klappt direkt seine Steuerungen auf: "Überwachten"-Schalter (Monitoring an/aus) und
+  "Anschauen" (Live-Stream im Player öffnen).
 - **Moderne GUI** (WinForms, folgt Hell-/Dunkelmodus): Kanäle mit Live-Status, Downloads, Einstellungs-Editor
   (schreibt `configs/config.json`), yt-dlp-Configs und Log-Ansicht.
 - **Einzeldownloads**: Video (mp4) oder Musik (mp3) von beliebigen URLs über Tray-Menü oder GUI; laufende
   Downloads lassen sich abbrechen.
 - **Stream-Wiedergabe** per [streamlink](https://streamlink.github.io/) ohne Aufnahme: Rechtsklick auf einen
-  Kanal in der GUI-Liste oder das Tray-Menü „Wiedergabe" öffnet den Live-Stream im Player — mit
-  Qualitätsauswahl (best, 1080p60, …, worst, nur Audio).
+  Kanal in der GUI-Liste oder einen Kanal im Tray-Menü aufklappen und "Anschauen" wählen — der Live-Stream
+  öffnet sich im Player, mit Qualitätsauswahl (best, 1080p60, …, worst, nur Audio).
 - **Robuste Twitch-API-Anbindung**: Token-Caching, exponentieller Backoff bei Rate-Limits (HTTP 429),
   Serverfehlern und Netzwerkproblemen (`Retry-After` wird beachtet) — erholt sich selbständig, kein Neustart nötig.
 - **Speicherplatzschutz**: Keine neuen Aufnahmen, wenn auf dem Ziel-Laufwerk weniger als
