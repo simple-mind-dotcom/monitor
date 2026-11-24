@@ -12,6 +12,11 @@
   "pollInterval": 30,
   "minFreeDiskSpaceGB": 5,
   "logLevel": "INFO",
+  "playback": {
+    "streamlinkPath": "streamlink",
+    "playerPath": "",
+    "quality": "best"
+  },
   "downloads": {
     "videoConfigPath": "configs\\download_video.conf",
     "musicConfigPath": "configs\\download_music.conf",

@@ -12,11 +12,16 @@ downloads by URL. Built with Windows PowerShell 5.1 — no runtime dependencies 
 - **Automatic recording** of configured channels: recording starts shortly after the stream goes live and
   is stopped and remuxed to `.mp4` when it ends.
 - **Tray icon** with live status per channel (grey = watching, red = recording, orange = paused) and a
-  context menu with full control — live status is even shown for disabled channels.
+  context menu with full control — live status is even shown for disabled channels. Each channel entry
+  expands directly to its controls: a "Überwachen" toggle (start/stop monitoring) and
+  "Anschauen" (open the live stream in your player — playback is tray-only).
 - **Modern GUI** (light/dark aware WinForms): channels with live status, downloads, a settings editor
   (writes `configs/config.json`), yt-dlp config pages and a log viewer.
 - **Single downloads**: video (mp4) or music (mp3) from any URL via tray menu or GUI; running downloads
   can be cancelled.
+- **Stream playback** via [streamlink](https://streamlink.github.io/) without recording: expand a channel
+  in the tray menu and pick "Anschauen" to open the live stream in your player — with quality selection
+  (best, 1080p60, …, worst, audio only).
 - **Robust Twitch API handling**: token caching, exponential backoff on rate limits (HTTP 429), server
   errors and network problems (`Retry-After` is honoured) — recovers on its own, no restart needed.
 - **Disk space guard**: no new recordings when free space on the target drive drops below
@@ -24,6 +29,9 @@ downloads by URL. Built with Windows PowerShell 5.1 — no runtime dependencies 
 - **Clean logging** (`logs/monitor.log`, per-channel logs): only relevant events by default, routine
   details available with `"logLevel": "DEBUG"`; empty yt-dlp logs of clean runs are removed automatically.
 - **yt-dlp age check**: warns at startup when the installed yt-dlp is older than 30 days.
+- **Stream playback details**: playback is non-blocking; a failed playback (e.g. channel offline) is
+  reported via notification. Playback keeps running after "Beenden (App)" — like recordings — and can be
+  stopped any time from the same menu.
 - **Single instance** per session and autostart via Windows Task Scheduler.
 
 ## Requirements
@@ -31,6 +39,9 @@ downloads by URL. Built with Windows PowerShell 5.1 — no runtime dependencies 
 - Windows PowerShell 5.1 (built into Windows)
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp) and FFmpeg on the `PATH`, e.g. via
   [scoop](https://scoop.sh): `scoop install yt-dlp ffmpeg`
+- Optional for stream playback: [streamlink](https://streamlink.github.io/) on the `PATH`
+  (`scoop install streamlink`). It opens the stream in its default/configured player (e.g. VLC) —
+  or set `playback.playerPath` in `configs/config.json` to your preferred player.
 
 ## Setup
 1. Clone or download this repository.
@@ -76,6 +87,9 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\twitch_monitor.ps1 -Re
 | `logLevel` | `INFO` (relevant events only) or `DEBUG` (adds routine details) | `INFO` |
 | `downloads.videoConfigPath` / `musicConfigPath` | yt-dlp configs for single downloads | `configs/download_*.conf` |
 | `downloads.videoDirectory` / `musicDirectory` | Target folders for single downloads | `~/Videos/downloads` resp. `~/Music/downloads` |
+| `playback.streamlinkPath` | Path or command name of streamlink (stream playback) | `streamlink` |
+| `playback.playerPath` | Player for stream playback; empty = streamlink's own default/configured player | – |
+| `playback.quality` | Default quality for stream playback (e.g. `best`, `1080p60`, `worst`, `audio_only`) | `best` |
 
 Relative paths are resolved from the project folder, `~` points to the user profile.
 

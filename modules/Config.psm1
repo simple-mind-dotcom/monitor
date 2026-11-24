@@ -13,6 +13,11 @@ function Initialize-Config {
             twitchClientSecret = ''
             minFreeDiskSpaceGB = 5
             logLevel = 'INFO'
+            playback = @{
+                streamlinkPath = 'streamlink'
+                playerPath = ''
+                quality = 'best'
+            }
         }
         $template | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $Path -Encoding UTF8
         Write-Log -Level WARN -Message "config.json fehlte und wurde mit einer Vorlage erstellt: $Path"
@@ -47,6 +52,9 @@ function Initialize-Config {
         TwitchClientSecret = [string]$raw.twitchClientSecret
         MinFreeDiskSpaceGB = if ($raw.minFreeDiskSpaceGB) { [double]$raw.minFreeDiskSpaceGB } else { 5 }
         LogLevel = if ($raw.logLevel) { ([string]$raw.logLevel).Trim() } else { 'INFO' }
+        PlaybackStreamlinkPath = if ($raw.playback.streamlinkPath) { [string]$raw.playback.streamlinkPath } else { 'streamlink' }
+        PlaybackPlayerPath = [string]$raw.playback.playerPath
+        PlaybackQuality = if ($raw.playback.quality) { ([string]$raw.playback.quality).Trim() } else { 'best' }
     }
 
     # Relative Pfade (z. B. configs\twitch.conf) gelten ab dem Projektordner, nicht ab dem Arbeitsverzeichnis.
@@ -115,6 +123,12 @@ function Test-ConfigEnvironment {
     }
     if ($Config.TwitchConfigPath -and -not (Test-Path -LiteralPath $Config.TwitchConfigPath)) {
         Write-Log -Level WARN -Message "twitchConfigPath existiert nicht: $($Config.TwitchConfigPath) - yt-dlp startet ohne Config."
+    }
+    if (-not (Get-Command $Config.PlaybackStreamlinkPath -ErrorAction SilentlyContinue)) {
+        Write-Log -Level WARN -Message "streamlink nicht gefunden ($($Config.PlaybackStreamlinkPath)) - Wiedergabe nicht verfügbar (scoop install streamlink)."
+    }
+    if ($Config.PlaybackPlayerPath -and -not (Get-Command $Config.PlaybackPlayerPath -ErrorAction SilentlyContinue)) {
+        Write-Log -Level WARN -Message "playback.playerPath nicht gefunden: $($Config.PlaybackPlayerPath) - streamlink nutzt stattdessen seinen eigenen Standardplayer."
     }
 
     return , $problems

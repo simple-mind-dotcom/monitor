@@ -186,6 +186,10 @@ function Get-GuiChannelRows {
             elseif ($cs.IsLive) { 'live (keine Aufnahme)' }
             elseif ($unknown) { 'Status unbekannt' }
             else { 'offline' }
+        # Läuft eine streamlink-Wiedergabe für den Kanal? (kleiner Play-Marker im Status)
+        if ($State.PlaybackJobs -and (@($State.PlaybackJobs) | Where-Object { [string]$_.Channel -eq $name }).Count -gt 0) {
+            $status = "$status  $([char]0x25B6)"
+        }
 
         $duration = ''; $size = ''
         if ($rec -and $cs.StartedAt) {
@@ -252,6 +256,7 @@ function Update-MainWindow {
         $rec = 0
         foreach ($n in @($State.Channels.Keys)) { if (Test-ChannelRecording -Channel $n -State $State) { $rec++ } }
         $dl = Get-ActiveDownloadCount -State $State
+        $pb = if (Get-Command Get-ActivePlaybackCount -ErrorAction SilentlyContinue) { Get-ActivePlaybackCount -State $State } else { 0 }
         $head = if ($State.ConfigError) { 'Konfigurationsfehler' }
                 elseif ($State.IsPaused) { 'Pausiert' }
                 else { 'Überwacht: ' + @($State.Channels.Values | Where-Object { $_.Enabled }).Count + ' Kanäle' }
@@ -265,7 +270,7 @@ function Update-MainWindow {
             }
             else { $c.DiskLabel.Text = ''; }
         }
-        $statusLines = @($head, "Aufnahmen: $rec", "Downloads: $dl")
+        $statusLines = @($head, "Aufnahmen: $rec", "Downloads: $dl", "Wiedergaben: $pb")
         if ($disk) { $statusLines += ('Speicher: {0:N0} GB frei ({1})' -f $disk.FreeGB, $disk.Drive) }
         if ($polling) { $statusLines += 'Abfrage läuft ...' }
         $c.StatusLabel.Text = ($statusLines -join "`r`n")
