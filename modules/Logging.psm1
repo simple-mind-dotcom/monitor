@@ -13,11 +13,21 @@ function Initialize-Logging {
     }
 }
 
+function Get-NormalizedLogLevel {
+    # Normalisiert einen Log-Level-Wert (config.json, GUI-Feld) auf INFO/DEBUG.
+    # Ohne ValidateSet: eine ungültige Angabe in config.json würde sonst beim Start abstürzen.
+    [CmdletBinding()]
+    param([string]$Level = 'INFO')
+    $l = ([string]$Level).Trim().ToUpperInvariant()
+    if ($l -ne 'DEBUG') { $l = 'INFO' }
+    return $l
+}
+
 function Set-LogLevel {
     # DEBUG-Meldungen (Routine/Details) werden nur geschrieben, wenn logLevel in config.json auf 'DEBUG' steht.
     [CmdletBinding()]
-    param([ValidateSet('DEBUG','INFO')][string]$Level = 'INFO')
-    $script:LogLevel = $Level
+    param([string]$Level = 'INFO')
+    $script:LogLevel = Get-NormalizedLogLevel -Level $Level
 }
 
 function Invoke-LogRotation {
@@ -65,4 +75,4 @@ function Write-Log {
     }
 }
 
-Export-ModuleMember -Function Initialize-Logging, Set-LogLevel, Write-Log
+Export-ModuleMember -Function Initialize-Logging, Set-LogLevel, Get-NormalizedLogLevel, Write-Log

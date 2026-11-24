@@ -27,7 +27,7 @@ function Initialize-Config {
         $raw = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json
     }
     catch {
-        throw "config.json ist kein g\u00fcltiges JSON: $($_.Exception.Message)"
+        throw "config.json ist kein gültiges JSON: $($_.Exception.Message)"
     }
 
     # Kanalnamen normalisieren: Twitch-Logins sind klein geschrieben und bestehen nur aus [a-z0-9_].
@@ -36,7 +36,7 @@ function Initialize-Config {
         $name = ([string]$entry).Trim().ToLowerInvariant()
         if (-not $name) { continue }
         if ($name -notmatch '^[a-z0-9_]{1,25}$') {
-            Write-Log -Level WARN -Message "Ung\u00fcltiger Kanalname in config.json wird ignoriert: '$entry'"
+            Write-Log -Level WARN -Message "Ungültiger Kanalname in config.json wird ignoriert: '$entry'"
             continue
         }
         if ($channels -notcontains $name) { $channels += $name }
@@ -58,7 +58,7 @@ function Initialize-Config {
     }
 
     # Relative Pfade (z. B. configs\twitch.conf) gelten ab dem Projektordner, nicht ab dem Arbeitsverzeichnis.
-    # '~' wird von GetUnresolvedProviderPathFromPSPath zum Benutzerprofil aufgel\u00f6st.
+    # '~' wird von GetUnresolvedProviderPathFromPSPath zum Benutzerprofil aufgelöst.
     $projectRoot = Split-Path -Parent $PSScriptRoot
     $resolve = {
         param($value, $default)
@@ -74,8 +74,8 @@ function Initialize-Config {
     $config.DownloadVideoDirectory = & $resolve $raw.downloads.videoDirectory "$env:USERPROFILE\Videos\downloads"
     $config.DownloadMusicDirectory = & $resolve $raw.downloads.musicDirectory "$env:USERPROFILE\Music\downloads"
 
-    # WICHTIG: Test-Config gibt $true in die Pipeline. Ohne $null = w\u00fcrde diese Funktion
-    # @($true, $config) statt der Hashtable zur\u00fcckgeben (Ursache des Fehlers im alten monitor.log).
+    # WICHTIG: Test-Config gibt $true in die Pipeline. Ohne $null = würde diese Funktion
+    # @($true, $config) statt der Hashtable zurückgeben (Ursache des Fehlers im alten monitor.log).
     $null = Test-Config -Config $config
 
     # Umgebungsprobleme (fehlendes yt-dlp, fehlende Zugangsdaten ...) beenden die App nicht, sondern werden
@@ -85,21 +85,21 @@ function Initialize-Config {
 }
 
 function Test-Config {
-    # Strukturelle Pr\u00fcfung: Fehler hier sind nicht behebbar, ohne config.json zu \u00e4ndern -> Ausnahme.
+    # Strukturelle Prüfung: Fehler hier sind nicht behebbar, ohne config.json zu ändern -> Ausnahme.
     [CmdletBinding()]
     param([Parameter(Mandatory)][hashtable]$Config)
 
-    if ($Config.Channels.Count -lt 1) { throw 'Mindestens ein g\u00fcltiger Twitch-Kanal muss in channels stehen.' }
+    if ($Config.Channels.Count -lt 1) { throw 'Mindestens ein gültiger Twitch-Kanal muss in channels stehen.' }
     if ($Config.PollInterval -lt 15) { throw 'pollInterval muss mindestens 15 Sekunden betragen.' }
-    if ($Config.PollInterval -gt 3600) { throw 'pollInterval darf h\u00f6chstens 3600 Sekunden betragen.' }
+    if ($Config.PollInterval -gt 3600) { throw 'pollInterval darf höchstens 3600 Sekunden betragen.' }
     if ([string]::IsNullOrWhiteSpace($Config.OutputDirectory)) { throw 'outputDirectory fehlt.' }
     if ([string]::IsNullOrWhiteSpace($Config.YtDlpPath)) { throw 'ytDlpPath fehlt.' }
     return $true
 }
 
 function Test-ConfigEnvironment {
-    # Pr\u00fcft, ob die Umgebung zur Konfiguration passt. Gibt die blockierenden Probleme als Textliste zur\u00fcck
-    # (leer = alles gut). Nicht blockierende Auff\u00e4lligkeiten werden nur als WARN geloggt.
+    # Prüft, ob die Umgebung zur Konfiguration passt. Gibt die blockierenden Probleme als Textliste zurück
+    # (leer = alles gut). Nicht blockierende Auffälligkeiten werden nur als WARN geloggt.
     [CmdletBinding()]
     param([Parameter(Mandatory)][hashtable]$Config)
 
@@ -119,7 +119,7 @@ function Test-ConfigEnvironment {
     catch { $problems += "outputDirectory nicht nutzbar: $($Config.OutputDirectory)" }
 
     if (-not (Get-Command $Config.FfmpegPath -ErrorAction SilentlyContinue)) {
-        Write-Log -Level WARN -Message "ffmpeg nicht gefunden ($($Config.FfmpegPath)) - Remux unvollst\u00e4ndiger Aufnahmen ist nicht m\u00f6glich."
+        Write-Log -Level WARN -Message "ffmpeg nicht gefunden ($($Config.FfmpegPath)) - Remux unvollständiger Aufnahmen ist nicht möglich."
     }
     if ($Config.TwitchConfigPath -and -not (Test-Path -LiteralPath $Config.TwitchConfigPath)) {
         Write-Log -Level WARN -Message "twitchConfigPath existiert nicht: $($Config.TwitchConfigPath) - yt-dlp startet ohne Config."
@@ -135,7 +135,7 @@ function Test-ConfigEnvironment {
 }
 
 function Get-DisabledChannels {
-    # Liest die per Tray-Men\u00fc deaktivierten Kan\u00e4le aus state.json (fehlt die Datei: alle aktiv).
+    # Liest die per Tray-Menü deaktivierten Kanäle aus state.json (fehlt die Datei: alle aktiv).
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$Path)
 
@@ -145,7 +145,7 @@ function Get-DisabledChannels {
         return @(@($raw.disabledChannels) | ForEach-Object { ([string]$_).Trim().ToLowerInvariant() } | Where-Object { $_ })
     }
     catch {
-        Write-Log -Level WARN -Message "state.json konnte nicht gelesen werden (alle Kan\u00e4le aktiv): $($_.Exception.Message)"
+        Write-Log -Level WARN -Message "state.json konnte nicht gelesen werden (alle Kanäle aktiv): $($_.Exception.Message)"
         return @()
     }
 }

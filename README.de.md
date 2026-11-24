@@ -17,7 +17,8 @@ yt-dlp und FFmpeg.
   Kanal-Eintrag klappt direkt seine Steuerungen auf: "Überwachten"-Schalter (Monitoring an/aus) und
   "Anschauen" (Live-Stream im Player öffnen; Wiedergabe gibt es nur im Tray).
 - **Moderne GUI** (WinForms, folgt Hell-/Dunkelmodus): Kanäle mit Live-Status, Downloads, Einstellungs-Editor
-  (schreibt `configs/config.json`), yt-dlp-Configs und Log-Ansicht.
+  (schreibt `configs/config.json`; umfasst Kanäle, Ordner und Programme, `pollInterval`,
+  `minFreeDiskSpaceGB`, `logLevel` und die Twitch-Zugangsdaten), yt-dlp-Configs und Log-Ansicht.
 - **Einzeldownloads**: Video (mp4) oder Musik (mp3) von beliebigen URLs über Tray-Menü oder GUI; laufende
   Downloads lassen sich abbrechen.
 - **Stream-Wiedergabe** per [streamlink](https://streamlink.github.io/) ohne Aufnahme: einen Kanal im
@@ -29,7 +30,9 @@ yt-dlp und FFmpeg.
   `minFreeDiskSpaceGB` frei sind; die GUI zeigt den freien Speicher farbcodiert an.
 - **Schlankes Logging** (`logs/monitor.log`, Kanal-Logs): Standardmäßig nur relevante Ereignisse, Routine-Details
   mit `"logLevel": "DEBUG"`; leere yt-dlp-Logs sauber gelaufener Aufnahmen werden automatisch gelöscht.
-- **yt-dlp-Alterprüfung**: Warnt beim Start, wenn die installierte yt-dlp-Version älter als 30 Tage ist.
+- **yt-dlp-Alterprüfung**: Warnt beim Start, wenn die installierte yt-dlp-Version älter als 30 Tage ist. Über
+  den Tray-Menüpunkt "yt-dlp aktualisieren" läuft `scoop update yt-dlp` mit einem Klick im Hintergrund; die
+  Version wird danach neu geprüft.
 - **Wiedergabe-Details**: Sie blockiert nicht; eine fehlgeschlagene Wiedergabe (z. B. Kanal offline) wird
   per Benachrichtigung gemeldet. Nach „Beenden (App)" läuft sie wie Aufnahmen weiter und lässt sich jederzeit
   über dasselbe Menü stoppen.

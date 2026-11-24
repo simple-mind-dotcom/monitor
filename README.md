@@ -16,7 +16,8 @@ downloads by URL. Built with Windows PowerShell 5.1 — no runtime dependencies 
   expands directly to its controls: a "Überwachen" toggle (start/stop monitoring) and
   "Anschauen" (open the live stream in your player — playback is tray-only).
 - **Modern GUI** (light/dark aware WinForms): channels with live status, downloads, a settings editor
-  (writes `configs/config.json`), yt-dlp config pages and a log viewer.
+  (writes `configs/config.json`; includes channels, folders and programmes, `pollInterval`,
+  `minFreeDiskSpaceGB`, `logLevel` and the Twitch credentials), yt-dlp config pages and a log viewer.
 - **Single downloads**: video (mp4) or music (mp3) from any URL via tray menu or GUI; running downloads
   can be cancelled.
 - **Stream playback** via [streamlink](https://streamlink.github.io/) without recording: expand a channel
@@ -28,7 +29,9 @@ downloads by URL. Built with Windows PowerShell 5.1 — no runtime dependencies 
   `minFreeDiskSpaceGB`; the GUI shows the remaining space colour-coded.
 - **Clean logging** (`logs/monitor.log`, per-channel logs): only relevant events by default, routine
   details available with `"logLevel": "DEBUG"`; empty yt-dlp logs of clean runs are removed automatically.
-- **yt-dlp age check**: warns at startup when the installed yt-dlp is older than 30 days.
+- **yt-dlp age check**: warns at startup when the installed yt-dlp is older than 30 days. The tray menu item
+  "yt-dlp aktualisieren" runs `scoop update yt-dlp` in the background with one click and re-checks the
+  version afterwards.
 - **Stream playback details**: playback is non-blocking; a failed playback (e.g. channel offline) is
   reported via notification. Playback keeps running after "Beenden (App)" — like recordings — and can be
   stopped any time from the same menu.

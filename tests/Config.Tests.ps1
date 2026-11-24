@@ -53,3 +53,30 @@ Describe 'Write-Log Loglevel (Logging)' -Tag 'Logging' {
         Set-LogLevel -Level INFO
     }
 }
+
+Describe 'Get-NormalizedLogLevel (Logging)' -Tag 'Logging' {
+    BeforeAll {
+        Import-Module (Join-Path $PSScriptRoot '..\modules\Logging.psm1') -Force -DisableNameChecking
+    }
+
+    It 'erkennt INFO und DEBUG' {
+        Get-NormalizedLogLevel -Level 'INFO' | Should -Be 'INFO'
+        Get-NormalizedLogLevel -Level 'DEBUG' | Should -Be 'DEBUG'
+    }
+
+    It 'ignoriert Gross-/Kleinschreibung und Leerraum' {
+        Get-NormalizedLogLevel -Level 'debug' | Should -Be 'DEBUG'
+        Get-NormalizedLogLevel -Level '  info  ' | Should -Be 'INFO'
+    }
+
+    It 'faellt bei unbekannten Werten auf INFO zurueck' {
+        Get-NormalizedLogLevel -Level 'VERBOSE' | Should -Be 'INFO'
+        Get-NormalizedLogLevel -Level '' | Should -Be 'INFO'
+    }
+
+    It 'Set-LogLevel bricht bei ungueltigen Werten nicht ab' {
+        { Set-LogLevel -Level 'quatsch' } | Should -Not -Throw
+        { Set-LogLevel -Level 'debug'.ToUpperInvariant() } | Should -Not -Throw
+        Set-LogLevel -Level 'INFO'
+    }
+}

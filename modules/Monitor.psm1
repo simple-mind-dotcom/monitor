@@ -433,4 +433,47 @@ function Stop-Monitor {
     [System.Windows.Forms.Application]::Exit()
 }
 
-Export-ModuleMember -Function New-ChannelState, Set-ChannelEnabled, Start-Monitor, Stop-Monitor, Pause-Monitor, Resume-Monitor, Invoke-MonitorCycle, Update-MonitorPoll, Test-YtDlpAge
+function Resolve-ScoopCommand {
+    # scoop je nach Installation als .cmd-Shim, .ps1 oder Funktion im PATH suchen.
+    foreach ($name in @('scoop.cmd', 'scoop.ps1', 'scoop')) {
+        $cmd = Get-Command -Name $name -ErrorAction SilentlyContinue
+        if ($cmd) { return $cmd }
+    }
+    return $null
+}
+
+function Start-YtDlpUpdate {
+    # yt-dlp per scoop aktualisieren (Tray-Menüpunkt). Läuft als eigener Prozess im Hintergrund
+    # und blockiert weder die GUI noch einen laufenden Monitor-Zyklus (die Aufnahmen nutzen
+    # die gerade gestartete yt-dlp-Version unverändert weiter).
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][hashtable]$State)
+
+    $scoop = Resolve-ScoopCommand
+    if (-not $scoop) {
+        Write-Log -Level WARN -Message 'yt-dlp-Aktualisierung nicht möglich: scoop wurde nicht gefunden.'
+        Show-TrayBalloon -State $State -Title 'yt-dlp aktualisieren' -Text 'scoop wurde nicht gefunden - yt-dlp bitte manuell aktualisieren.' -IsError $true
+        return $false
+    }
+    try {
+        if ($scoop.Source -and $scoop.Source -like '*.ps1') {
+            $null = Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $scoop.Source, 'update', 'yt-dlp') -WindowStyle Hidden
+        }
+        else {
+            $null = Start-Process -FilePath $scoop.Source -ArgumentList @('update', 'yt-dlp') -WindowStyle Hidden
+        }
+        Write-Log -Level INFO -Message 'yt-dlp-Aktualisierung gestartet (scoop update yt-dlp) - läuft im Hintergrund.'
+        Show-TrayBalloon -State $State -Title 'yt-dlp aktualisieren' -Text 'Die Aktualisierung läuft im Hintergrund und kann einige Minuten dauern.'
+        # Altersprüfung zurücksetzen: der nächste Abfragezyklus liest die Version neu und bewertet das Alter frisch.
+        $State.YtDlpVersionChecked = $false
+        Request-MonitorCycle -State $State
+        return $true
+    }
+    catch {
+        Write-Log -Level ERROR -Message "yt-dlp-Aktualisierung fehlgeschlagen: $($_.Exception.Message)"
+        Show-TrayBalloon -State $State -Title 'yt-dlp aktualisieren' -Text $_.Exception.Message -IsError $true
+        return $false
+    }
+}
+
+Export-ModuleMember -Function New-ChannelState, Set-ChannelEnabled, Start-Monitor, Stop-Monitor, Pause-Monitor, Resume-Monitor, Invoke-MonitorCycle, Update-MonitorPoll, Test-YtDlpAge, Start-YtDlpUpdate
